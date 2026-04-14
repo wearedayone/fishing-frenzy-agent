@@ -1,0 +1,11 @@
+{
+  "name": "fishing-frenzy-agent",
+  "description": "AI agent that plays Fishing Frenzy autonomously. Install, configure, compete.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Uncharted Games"
+  },
+  "homepage": "https://fishingfrenzy.co",
+  "repository": "https://github.com/wearedayone/fishing-frenzy-agent",
+  "license": "MIT"
+}

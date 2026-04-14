@@ -1,0 +1,269 @@
+"""SQLite state persistence for Fishing Frenzy Agent."""
+
+import json
+import os
+import sqlite3
+import time
+from pathlib import Path
+
+STATE_DIR = Path.home() / ".fishing-frenzy-agent"
+DB_PATH = STATE_DIR / "state.db"
+
+
+def _ensure_dir():
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def get_connection() -> sqlite3.Connection:
+    _ensure_dir()
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    _init_tables(conn)
+    return conn
+
+
+def _init_tables(conn: sqlite3.Connection):
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS auth (
+            key TEXT PRIMARY KEY,
+            value TEXT,
+            expires_at INTEGER
+        );
+
+        CREATE TABLE IF NOT EXISTS wallet (
+            address TEXT PRIMARY KEY,
+            private_key TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            started_at TEXT,
+            ended_at TEXT,
+            fish_caught INTEGER DEFAULT 0,
+            gold_earned REAL DEFAULT 0,
+            xp_earned INTEGER DEFAULT 0,
+            energy_spent INTEGER DEFAULT 0,
+            strategy TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS cache (
+            key TEXT PRIMARY KEY,
+            value TEXT,
+            cached_at INTEGER
+        );
+    """)
+    conn.commit()
+
+
+# --- Auth ---
+
+def save_auth(access_token: str, refresh_token: str, user_id: str,
+              privy_token: str = None):
+    conn = get_connection()
+    now = int(time.time())
+    # Access tokens typically expire in ~30 min, refresh in ~30 days
+    conn.execute(
+        "INSERT OR REPLACE INTO auth (key, value, expires_at) VALUES (?, ?, ?)",
+        ("access_token", access_token, now + 1800)
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO auth (key, value, expires_at) VALUES (?, ?, ?)",
+        ("refresh_token", refresh_token, now + 2592000)
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO auth (key, value, expires_at) VALUES (?, ?, ?)",
+        ("user_id", user_id, 0)  # Never expires
+    )
+    if privy_token:
+        conn.execute(
+            "INSERT OR REPLACE INTO auth (key, value, expires_at) VALUES (?, ?, ?)",
+            ("privy_token", privy_token, now + 3600)
+        )
+    conn.commit()
+    conn.close()
+
+
+def get_auth(key: str) -> str | None:
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT value, expires_at FROM auth WHERE key = ?", (key,)
+    ).fetchone()
+    conn.close()
+    if row is None:
+        return None
+    # Check expiration (0 = never expires)
+    if row["expires_at"] > 0 and row["expires_at"] < int(time.time()):
+        return None
+    return row["value"]
+
+
+def get_all_auth() -> dict:
+    return {
+        "access_token": get_auth("access_token"),
+        "refresh_token": get_auth("refresh_token"),
+        "user_id": get_auth("user_id"),
+        "privy_token": get_auth("privy_token"),
+    }
+
+
+# --- Wallet ---
+
+def save_wallet(address: str, private_key: str):
+    conn = get_connection()
+    conn.execute(
+        "INSERT OR REPLACE INTO wallet (address, private_key) VALUES (?, ?)",
+        (address, private_key)
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_wallet() -> dict | None:
+    conn = get_connection()
+    row = conn.execute("SELECT address, private_key FROM wallet LIMIT 1").fetchone()
+    conn.close()
+    if row is None:
+        return None
+    return {"address": row["address"], "private_key": row["private_key"]}
+
+
+# --- Sessions ---
+
+def start_session(strategy: str = "balanced") -> int:
+    conn = get_connection()
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    cursor = conn.execute(
+        "INSERT INTO sessions (started_at, strategy) VALUES (?, ?)",
+        (now, strategy)
+    )
+    session_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return session_id
+
+
+def update_session(session_id: int, fish_caught: int = 0, gold_earned: float = 0,
+                   xp_earned: int = 0, energy_spent: int = 0):
+    conn = get_connection()
+    conn.execute("""
+        UPDATE sessions SET
+            fish_caught = fish_caught + ?,
+            gold_earned = gold_earned + ?,
+            xp_earned = xp_earned + ?,
+            energy_spent = energy_spent + ?
+        WHERE id = ?
+    """, (fish_caught, gold_earned, xp_earned, energy_spent, session_id))
+    conn.commit()
+    conn.close()
+
+
+def end_session(session_id: int):
+    conn = get_connection()
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        "UPDATE sessions SET ended_at = ? WHERE id = ?", (now, session_id)
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_session_history(limit: int = 10) -> list[dict]:
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT * FROM sessions ORDER BY id DESC LIMIT ?", (limit,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_lifetime_stats() -> dict:
+    conn = get_connection()
+    row = conn.execute("""
+        SELECT
+            COUNT(*) as total_sessions,
+            COALESCE(SUM(fish_caught), 0) as total_fish,
+            COALESCE(SUM(gold_earned), 0) as total_gold,
+            COALESCE(SUM(xp_earned), 0) as total_xp,
+            COALESCE(SUM(energy_spent), 0) as total_energy
+        FROM sessions
+    """).fetchone()
+    conn.close()
+    return dict(row)
+
+
+# --- Cache ---
+
+def set_cache(key: str, value: any, ttl: int = 300):
+    conn = get_connection()
+    conn.execute(
+        "INSERT OR REPLACE INTO cache (key, value, cached_at) VALUES (?, ?, ?)",
+        (key, json.dumps(value), int(time.time()))
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_cache(key: str, ttl: int = 300) -> any:
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT value, cached_at FROM cache WHERE key = ?", (key,)
+    ).fetchone()
+    conn.close()
+    if row is None:
+        return None
+    if int(time.time()) - row["cached_at"] > ttl:
+        return None
+    return json.loads(row["value"])
+
+
+# --- Summary (for SKILL.md dynamic context) ---
+
+def get_summary() -> str:
+    wallet = get_wallet()
+    auth = get_all_auth()
+    stats = get_lifetime_stats()
+    recent = get_session_history(3)
+
+    lines = []
+    if wallet:
+        lines.append(f"Wallet: {wallet['address']}")
+    else:
+        lines.append("Wallet: Not created yet")
+
+    if auth["user_id"]:
+        lines.append(f"User ID: {auth['user_id']}")
+        lines.append(f"Auth: {'Active' if auth['access_token'] else 'Expired (needs refresh)'}")
+    else:
+        lines.append("Account: Not set up yet")
+
+    lines.append(f"\nLifetime Stats:")
+    lines.append(f"  Sessions: {stats['total_sessions']}")
+    lines.append(f"  Fish Caught: {stats['total_fish']}")
+    lines.append(f"  Gold Earned: {stats['total_gold']:.0f}")
+    lines.append(f"  XP Earned: {stats['total_xp']}")
+    lines.append(f"  Energy Spent: {stats['total_energy']}")
+
+    if recent:
+        lines.append(f"\nRecent Sessions:")
+        for s in recent:
+            lines.append(
+                f"  #{s['id']}: {s['fish_caught']} fish, "
+                f"{s['gold_earned']:.0f} gold, {s['xp_earned']} XP "
+                f"({s['strategy'] or 'unknown'})"
+            )
+
+    return "\n".join(lines)
+
+
+if __name__ == "__main__":
+    import sys
+    if "--summary" in sys.argv:
+        print(get_summary())
+    else:
+        print(f"State DB: {DB_PATH}")
+        print(f"Exists: {DB_PATH.exists()}")
+        if DB_PATH.exists():
+            print(get_summary())

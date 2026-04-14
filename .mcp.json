@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "fishing-frenzy": {
+      "command": "python3",
+      "args": ["ff_agent/server.py"],
+      "cwd": "${PLUGIN_DIR}",
+      "env": {}
+    }
+  }
+}
