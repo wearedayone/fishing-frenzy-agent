@@ -58,7 +58,7 @@ async def _dive_session_async(token: str, max_picks: int = 0) -> dict:
 
     try:
         async with websockets.connect(
-            url, additional_headers=headers, close_timeout=5
+            url, additional_headers=headers, open_timeout=15, close_timeout=5
         ) as ws:
             # Send new_dive to start
             await ws.send(json.dumps({"cmd": "new_dive"}))

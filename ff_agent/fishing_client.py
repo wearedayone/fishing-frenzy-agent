@@ -186,8 +186,11 @@ def fish_batch(token: str, range_type: str = "short_range",
     total_gold = 0
 
     last_cast_time = 0
-    for i in range(count):
-        if i > 0:
+    cooldown_retries = 0
+    max_cooldown_retries = 3
+    i = 0
+    while i < count:
+        if i > 0 or cooldown_retries > 0:
             # Ensure at least CAST_COOLDOWN seconds between session starts
             elapsed = time.time() - last_cast_time
             wait = max(0, CAST_COOLDOWN - elapsed + random.uniform(0.5, 1.5))
@@ -196,27 +199,41 @@ def fish_batch(token: str, range_type: str = "short_range",
         last_cast_time = time.time()
 
         result = fish_session(token, range_type, theme_id, multiplier)
-        results.append(result)
 
         if result["success"]:
+            results.append(result)
             successes += 1
+            cooldown_retries = 0
             fish = result.get("fish", {})
             total_xp += fish.get("xp_gain", 0)
             total_gold += fish.get("sell_price", 0)
+            i += 1
         else:
             error = result.get("error", "")
             # "Fish escaped" is normal gameplay — count it but don't stop
             if "escaped" in str(error).lower():
+                results.append(result)
                 failures += 1
+                cooldown_retries = 0
+                i += 1
             elif any(s in str(error).lower() for s in ["energy", "not enough", "401", "unauthorized"]):
+                results.append(result)
                 failures += 1
                 break  # Stop on resource/auth errors
             elif "10 seconds" in str(error).lower():
-                # Cooldown error — wait and retry this cast
-                time.sleep(5)
-                continue
+                # Cooldown error — wait and retry (with limit)
+                cooldown_retries += 1
+                if cooldown_retries > max_cooldown_retries:
+                    results.append(result)
+                    failures += 1
+                    i += 1
+                    cooldown_retries = 0
+                time.sleep(CAST_COOLDOWN)
             else:
+                results.append(result)
                 failures += 1
+                cooldown_retries = 0
+                i += 1
 
     return {
         "total_casts": len(results),

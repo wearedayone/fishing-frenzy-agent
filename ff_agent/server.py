@@ -100,11 +100,15 @@ def _tool_error(e, api_response=None):
     return _game_error(action, e, api_response)
 
 
-def _get_profile_snapshot() -> dict:
-    """Quick profile snapshot for verification gates."""
+def _get_profile_snapshot() -> dict | None:
+    """Quick profile snapshot for verification gates. Returns None on failure."""
     try:
         profile = api.get_me()
+        if not isinstance(profile, dict):
+            return None
         user = profile if "gold" in profile else profile.get("data", profile)
+        if not isinstance(user, dict):
+            return None
         return {
             "gold": user.get("gold", 0),
             "energy": user.get("energy", 0),
@@ -112,7 +116,24 @@ def _get_profile_snapshot() -> dict:
             "xp": user.get("exp", user.get("xp", 0)),
         }
     except Exception:
-        return {}
+        return None
+
+
+def _build_verification(before: dict | None, after: dict | None) -> dict | None:
+    """Build a verification dict from before/after snapshots. Returns None if either failed."""
+    if before is None or after is None:
+        return None
+    return {
+        "gold_before": before.get("gold", 0),
+        "gold_after": after.get("gold", 0),
+        "gold_change": after.get("gold", 0) - before.get("gold", 0),
+        "energy_before": before.get("energy", 0),
+        "energy_after": after.get("energy", 0),
+        "energy_change": after.get("energy", 0) - before.get("energy", 0),
+        "xp_before": before.get("xp", 0),
+        "xp_after": after.get("xp", 0),
+        "xp_change": after.get("xp", 0) - before.get("xp", 0),
+    }
 
 
 # ============================================================
@@ -264,17 +285,13 @@ def sell_all_fish() -> str:
         before = _get_profile_snapshot()
         result = api.sell_all_fish()
         after = _get_profile_snapshot()
-        gold_change = after.get("gold", 0) - before.get("gold", 0)
-        result_out = {
-            "result": result,
-            "verified": {
-                "gold_before": before.get("gold", 0),
-                "gold_after": after.get("gold", 0),
-                "gold_change": gold_change,
-            },
-        }
+        verified = _build_verification(before, after)
+        result_out = {"result": result}
+        if verified:
+            result_out["verified"] = verified
         state.log_action("sell_all_fish", result=result,
-                         gold_before=before.get("gold"), gold_after=after.get("gold"))
+                         gold_before=before.get("gold") if before else None,
+                         gold_after=after.get("gold") if after else None)
         return json.dumps(result_out, indent=2)
     except Exception as e:
         return json.dumps(_game_error("sell_all_fish", e))
@@ -300,26 +317,31 @@ def buy_item(item_name: str, quantity: int = 1, auto_use: bool = True) -> str:
         if auto_use:
             use_result = api.use_item(item_id, quantity)
             after = _get_profile_snapshot()
+            verified = _build_verification(before, after)
             result_out = {
                 "bought": quantity,
                 "item": item_name,
                 "used": True,
                 "result": use_result,
-                "verified": {
-                    "gold_change": after.get("gold", 0) - before.get("gold", 0),
-                    "energy_change": after.get("energy", 0) - before.get("energy", 0),
-                },
             }
+            if verified:
+                result_out["verified"] = verified
             state.log_action("buy_item", params={"item": item_name, "quantity": quantity, "auto_use": True},
-                             gold_before=before.get("gold"), gold_after=after.get("gold"),
-                             energy_before=before.get("energy"), energy_after=after.get("energy"))
+                             gold_before=before.get("gold") if before else None,
+                             gold_after=after.get("gold") if after else None,
+                             energy_before=before.get("energy") if before else None,
+                             energy_after=after.get("energy") if after else None)
             return json.dumps(result_out, indent=2)
 
         after = _get_profile_snapshot()
+        verified = _build_verification(before, after)
+        result_out = {"bought": quantity, "item": item_name, "used": False, "result": buy_result}
+        if verified:
+            result_out["verified"] = verified
         state.log_action("buy_item", params={"item": item_name, "quantity": quantity, "auto_use": False},
-                         gold_before=before.get("gold"), gold_after=after.get("gold"))
-        return json.dumps({"bought": quantity, "item": item_name, "used": False, "result": buy_result,
-                           "verified": {"gold_change": after.get("gold", 0) - before.get("gold", 0)}}, indent=2)
+                         gold_before=before.get("gold") if before else None,
+                         gold_after=after.get("gold") if after else None)
+        return json.dumps(result_out, indent=2)
     except Exception as e:
         return json.dumps(_game_error("buy_item", e))
 
@@ -428,16 +450,13 @@ def claim_daily_reward() -> str:
         before = _get_profile_snapshot()
         result = api.claim_daily_reward()
         after = _get_profile_snapshot()
-        result_out = {
-            "result": result,
-            "verified": {
-                "gold_change": after.get("gold", 0) - before.get("gold", 0),
-                "energy_change": after.get("energy", 0) - before.get("energy", 0),
-                "xp_change": after.get("xp", 0) - before.get("xp", 0),
-            },
-        }
+        verified = _build_verification(before, after)
+        result_out = {"result": result}
+        if verified:
+            result_out["verified"] = verified
         state.log_action("claim_daily_reward", result=result,
-                         gold_before=before.get("gold"), gold_after=after.get("gold"))
+                         gold_before=before.get("gold") if before else None,
+                         gold_after=after.get("gold") if after else None)
         return json.dumps(result_out, indent=2)
     except Exception as e:
         return json.dumps(_game_error("claim_daily_reward", e))
@@ -463,15 +482,13 @@ def claim_quest(quest_id: str) -> str:
         before = _get_profile_snapshot()
         result = api.claim_quest(quest_id)
         after = _get_profile_snapshot()
-        result_out = {
-            "result": result,
-            "verified": {
-                "gold_change": after.get("gold", 0) - before.get("gold", 0),
-                "xp_change": after.get("xp", 0) - before.get("xp", 0),
-            },
-        }
+        verified = _build_verification(before, after)
+        result_out = {"result": result}
+        if verified:
+            result_out["verified"] = verified
         state.log_action("claim_quest", params={"quest_id": quest_id}, result=result,
-                         gold_before=before.get("gold"), gold_after=after.get("gold"))
+                         gold_before=before.get("gold") if before else None,
+                         gold_after=after.get("gold") if after else None)
         return json.dumps(result_out, indent=2)
     except Exception as e:
         return json.dumps(_game_error("claim_quest", e))
@@ -559,22 +576,31 @@ def get_accessories() -> str:
             }
             for acc in result["accessories"]:
                 current_level = acc.get("currentLevel", 0)
-                effects = acc.get("effects", [])
+                effects = acc.get("effects") or []
                 current_effect = next(
-                    (e["effect"] for e in effects if e["level"] == current_level), 0
+                    (e.get("effect", 0) for e in effects if isinstance(e, dict) and e.get("level") == current_level), 0
                 )
                 next_effect = next(
-                    (e for e in effects if e["level"] == current_level + 1), None
+                    (e for e in effects if isinstance(e, dict) and e.get("level") == current_level + 1), None
                 )
-                summary["accessories"].append({
+                acc_info = {
                     "id": acc.get("accessoryId"),
                     "name": acc.get("name"),
                     "description": acc.get("description"),
                     "level": f"{current_level}/{acc.get('maxLevel', 10)}",
-                    "current_effect": f"{current_effect:.0%}",
-                    "next_upgrade_cost": next_effect["pointsRequired"] if next_effect else "MAX",
-                    "next_effect": f"{next_effect['effect']:.0%}" if next_effect else "MAX",
-                })
+                }
+                if isinstance(current_effect, (int, float)):
+                    acc_info["current_effect"] = f"{current_effect:.0%}"
+                else:
+                    acc_info["current_effect"] = str(current_effect)
+                if next_effect and isinstance(next_effect, dict):
+                    acc_info["next_upgrade_cost"] = next_effect.get("pointsRequired", "?")
+                    effect_val = next_effect.get("effect")
+                    acc_info["next_effect"] = f"{effect_val:.0%}" if isinstance(effect_val, (int, float)) else str(effect_val)
+                else:
+                    acc_info["next_upgrade_cost"] = "MAX"
+                    acc_info["next_effect"] = "MAX"
+                summary["accessories"].append(acc_info)
             return json.dumps(summary, indent=2)
         return json.dumps(result, indent=2)
     except Exception as e:
@@ -704,6 +730,34 @@ def get_chests() -> str:
         return json.dumps(_tool_error(e))
 
 
+def _extract_chest_ids(inv) -> list[str]:
+    """Extract chest IDs from any inventory response format."""
+    ids = []
+    items = []
+    if isinstance(inv, list):
+        items = inv
+    elif isinstance(inv, dict):
+        # Try all common response shapes
+        for key in ("chests", "data", "items", "inventory"):
+            candidate = inv.get(key)
+            if isinstance(candidate, list):
+                items = candidate
+                break
+        if not items:
+            # Single chest object
+            cid = inv.get("_id") or inv.get("id")
+            if cid:
+                return [str(cid)]
+    for c in items:
+        if isinstance(c, dict):
+            cid = c.get("_id") or c.get("id")
+            if cid:
+                ids.append(str(cid))
+        elif isinstance(c, str):
+            ids.append(c)
+    return ids
+
+
 @server.tool()
 def open_chests(chest_ids: list[str] = None) -> str:
     """Open chests from inventory. Opens all non-NFT chests if no IDs specified.
@@ -715,12 +769,7 @@ def open_chests(chest_ids: list[str] = None) -> str:
         if not chest_ids:
             # Fetch all chests and open them
             inv = api.get_inventory_chests()
-            if isinstance(inv, list):
-                chest_ids = [c.get("_id") or c.get("id") for c in inv if c.get("_id") or c.get("id")]
-            elif isinstance(inv, dict):
-                chests = inv.get("chests", inv.get("data", []))
-                if isinstance(chests, list):
-                    chest_ids = [c.get("_id") or c.get("id") for c in chests if c.get("_id") or c.get("id")]
+            chest_ids = _extract_chest_ids(inv)
 
         if not chest_ids:
             return json.dumps({"message": "No chests to open"})

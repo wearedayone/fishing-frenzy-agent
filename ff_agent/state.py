@@ -74,41 +74,43 @@ def _init_tables(conn: sqlite3.Connection):
 def save_auth(access_token: str, refresh_token: str, user_id: str,
               privy_token: str = None):
     conn = get_connection()
-    now = int(time.time())
-    # Access tokens typically expire in ~30 min, refresh in ~30 days
-    conn.execute(
-        "INSERT OR REPLACE INTO auth (key, value, expires_at) VALUES (?, ?, ?)",
-        ("access_token", access_token, now + 1800)
-    )
-    conn.execute(
-        "INSERT OR REPLACE INTO auth (key, value, expires_at) VALUES (?, ?, ?)",
-        ("refresh_token", refresh_token, now + 2592000)
-    )
-    conn.execute(
-        "INSERT OR REPLACE INTO auth (key, value, expires_at) VALUES (?, ?, ?)",
-        ("user_id", user_id, 0)  # Never expires
-    )
-    if privy_token:
+    try:
+        now = int(time.time())
         conn.execute(
             "INSERT OR REPLACE INTO auth (key, value, expires_at) VALUES (?, ?, ?)",
-            ("privy_token", privy_token, now + 3600)
+            ("access_token", access_token, now + 1800)
         )
-    conn.commit()
-    conn.close()
+        conn.execute(
+            "INSERT OR REPLACE INTO auth (key, value, expires_at) VALUES (?, ?, ?)",
+            ("refresh_token", refresh_token, now + 2592000)
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO auth (key, value, expires_at) VALUES (?, ?, ?)",
+            ("user_id", user_id, 0)
+        )
+        if privy_token:
+            conn.execute(
+                "INSERT OR REPLACE INTO auth (key, value, expires_at) VALUES (?, ?, ?)",
+                ("privy_token", privy_token, now + 3600)
+            )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def get_auth(key: str) -> str | None:
     conn = get_connection()
-    row = conn.execute(
-        "SELECT value, expires_at FROM auth WHERE key = ?", (key,)
-    ).fetchone()
-    conn.close()
-    if row is None:
-        return None
-    # Check expiration (0 = never expires)
-    if row["expires_at"] > 0 and row["expires_at"] < int(time.time()):
-        return None
-    return row["value"]
+    try:
+        row = conn.execute(
+            "SELECT value, expires_at FROM auth WHERE key = ?", (key,)
+        ).fetchone()
+        if row is None:
+            return None
+        if row["expires_at"] > 0 and row["expires_at"] < int(time.time()):
+            return None
+        return row["value"]
+    finally:
+        conn.close()
 
 
 def get_all_auth() -> dict:
@@ -124,87 +126,101 @@ def get_all_auth() -> dict:
 
 def save_wallet(address: str, private_key: str):
     conn = get_connection()
-    conn.execute(
-        "INSERT OR REPLACE INTO wallet (address, private_key) VALUES (?, ?)",
-        (address, private_key)
-    )
-    conn.commit()
-    conn.close()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO wallet (address, private_key) VALUES (?, ?)",
+            (address, private_key)
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def get_wallet() -> dict | None:
     conn = get_connection()
-    row = conn.execute("SELECT address, private_key FROM wallet LIMIT 1").fetchone()
-    conn.close()
-    if row is None:
-        return None
-    return {"address": row["address"], "private_key": row["private_key"]}
+    try:
+        row = conn.execute("SELECT address, private_key FROM wallet LIMIT 1").fetchone()
+        if row is None:
+            return None
+        return {"address": row["address"], "private_key": row["private_key"]}
+    finally:
+        conn.close()
 
 
 # --- Sessions ---
 
 def start_session(strategy: str = "balanced") -> int:
     conn = get_connection()
-    from datetime import datetime, timezone
-    now = datetime.now(timezone.utc).isoformat()
-    cursor = conn.execute(
-        "INSERT INTO sessions (started_at, strategy) VALUES (?, ?)",
-        (now, strategy)
-    )
-    session_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    return session_id
+    try:
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+        cursor = conn.execute(
+            "INSERT INTO sessions (started_at, strategy) VALUES (?, ?)",
+            (now, strategy)
+        )
+        session_id = cursor.lastrowid
+        conn.commit()
+        return session_id
+    finally:
+        conn.close()
 
 
 def update_session(session_id: int, fish_caught: int = 0, gold_earned: float = 0,
                    xp_earned: int = 0, energy_spent: int = 0):
     conn = get_connection()
-    conn.execute("""
-        UPDATE sessions SET
-            fish_caught = fish_caught + ?,
-            gold_earned = gold_earned + ?,
-            xp_earned = xp_earned + ?,
-            energy_spent = energy_spent + ?
-        WHERE id = ?
-    """, (fish_caught, gold_earned, xp_earned, energy_spent, session_id))
-    conn.commit()
-    conn.close()
+    try:
+        conn.execute("""
+            UPDATE sessions SET
+                fish_caught = fish_caught + ?,
+                gold_earned = gold_earned + ?,
+                xp_earned = xp_earned + ?,
+                energy_spent = energy_spent + ?
+            WHERE id = ?
+        """, (fish_caught, gold_earned, xp_earned, energy_spent, session_id))
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def end_session(session_id: int):
     conn = get_connection()
-    from datetime import datetime, timezone
-    now = datetime.now(timezone.utc).isoformat()
-    conn.execute(
-        "UPDATE sessions SET ended_at = ? WHERE id = ?", (now, session_id)
-    )
-    conn.commit()
-    conn.close()
+    try:
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            "UPDATE sessions SET ended_at = ? WHERE id = ?", (now, session_id)
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def get_session_history(limit: int = 10) -> list[dict]:
     conn = get_connection()
-    rows = conn.execute(
-        "SELECT * FROM sessions ORDER BY id DESC LIMIT ?", (limit,)
-    ).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    try:
+        rows = conn.execute(
+            "SELECT * FROM sessions ORDER BY id DESC LIMIT ?", (limit,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
 
 
 def get_lifetime_stats() -> dict:
     conn = get_connection()
-    row = conn.execute("""
-        SELECT
-            COUNT(*) as total_sessions,
-            COALESCE(SUM(fish_caught), 0) as total_fish,
-            COALESCE(SUM(gold_earned), 0) as total_gold,
-            COALESCE(SUM(xp_earned), 0) as total_xp,
-            COALESCE(SUM(energy_spent), 0) as total_energy
-        FROM sessions
-    """).fetchone()
-    conn.close()
-    return dict(row)
+    try:
+        row = conn.execute("""
+            SELECT
+                COUNT(*) as total_sessions,
+                COALESCE(SUM(fish_caught), 0) as total_fish,
+                COALESCE(SUM(gold_earned), 0) as total_gold,
+                COALESCE(SUM(xp_earned), 0) as total_xp,
+                COALESCE(SUM(energy_spent), 0) as total_energy
+            FROM sessions
+        """).fetchone()
+        return dict(row)
+    finally:
+        conn.close()
 
 
 # --- Action Log ---
@@ -215,61 +231,69 @@ def log_action(action: str, params: dict = None, result: dict = None,
                session_id: int = None):
     """Log a game action with optional pre/post state snapshots."""
     conn = get_connection()
-    from datetime import datetime, timezone
-    now = datetime.now(timezone.utc).isoformat()
-    conn.execute(
-        """INSERT INTO action_log
-           (session_id, timestamp, action, params, result,
-            gold_before, gold_after, energy_before, energy_after)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (session_id, now, action,
-         json.dumps(params) if params else None,
-         json.dumps(result) if result else None,
-         gold_before, gold_after, energy_before, energy_after)
-    )
-    conn.commit()
-    conn.close()
+    try:
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            """INSERT INTO action_log
+               (session_id, timestamp, action, params, result,
+                gold_before, gold_after, energy_before, energy_after)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (session_id, now, action,
+             json.dumps(params) if params else None,
+             json.dumps(result) if result else None,
+             gold_before, gold_after, energy_before, energy_after)
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def get_action_log(session_id: int = None, limit: int = 50) -> list[dict]:
     """Get recent action log entries, optionally filtered by session."""
     conn = get_connection()
-    if session_id:
-        rows = conn.execute(
-            "SELECT * FROM action_log WHERE session_id = ? ORDER BY id DESC LIMIT ?",
-            (session_id, limit)
-        ).fetchall()
-    else:
-        rows = conn.execute(
-            "SELECT * FROM action_log ORDER BY id DESC LIMIT ?", (limit,)
-        ).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    try:
+        if session_id:
+            rows = conn.execute(
+                "SELECT * FROM action_log WHERE session_id = ? ORDER BY id DESC LIMIT ?",
+                (session_id, limit)
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM action_log ORDER BY id DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
 
 
 # --- Cache ---
 
 def set_cache(key: str, value: any, ttl: int = 300):
     conn = get_connection()
-    conn.execute(
-        "INSERT OR REPLACE INTO cache (key, value, cached_at) VALUES (?, ?, ?)",
-        (key, json.dumps(value), int(time.time()))
-    )
-    conn.commit()
-    conn.close()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO cache (key, value, cached_at) VALUES (?, ?, ?)",
+            (key, json.dumps(value), int(time.time()))
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def get_cache(key: str, ttl: int = 300) -> any:
     conn = get_connection()
-    row = conn.execute(
-        "SELECT value, cached_at FROM cache WHERE key = ?", (key,)
-    ).fetchone()
-    conn.close()
-    if row is None:
-        return None
-    if int(time.time()) - row["cached_at"] > ttl:
-        return None
-    return json.loads(row["value"])
+    try:
+        row = conn.execute(
+            "SELECT value, cached_at FROM cache WHERE key = ?", (key,)
+        ).fetchone()
+        if row is None:
+            return None
+        if int(time.time()) - row["cached_at"] > ttl:
+            return None
+        return json.loads(row["value"])
+    finally:
+        conn.close()
 
 
 # --- Summary (for SKILL.md dynamic context) ---
