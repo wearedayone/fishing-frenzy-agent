@@ -168,6 +168,74 @@ def collect_pet_fish() -> dict:
     return _request("GET", "/pets/collect/all")
 
 
+# --- Diving ---
+
+def get_diving_config() -> dict:
+    """Get diving game configuration (board sizes, coral rewards, ticket costs)."""
+    return _request("GET", "/diving/game-config")
+
+
+def get_diving_state() -> dict:
+    """Get current diving state (are we mid-dive?)."""
+    return _request("GET", "/diving/state")
+
+
+def get_diving_jackpots() -> dict:
+    """Get current diving jackpot values."""
+    return _request("GET", "/diving/jackpot-values")
+
+
+def buy_diving_ticket_with_gold(diving_type: str = "Regular",
+                                 quantity: int = 1) -> dict:
+    """Buy a diving ticket with gold.
+
+    Args:
+        diving_type: "Regular" (gold cost).
+        quantity: Number of tickets to buy.
+    """
+    return _request("POST", "/trading/diving-ticket-purchase-transactions",
+                     json={"type": diving_type, "quantity": quantity,
+                           "transactionHash": None})
+
+
+def use_diving_ticket(diving_type: str = "Regular",
+                       mode: str = "X1") -> dict:
+    """Use a diving ticket to prepare a dive.
+
+    Args:
+        diving_type: "Regular", "Premium", or "Token".
+        mode: "X1" (normal) or "X10" (10x multiplier, uses 10 tickets).
+    """
+    return _request("POST", "/diving/use-ticket",
+                     json={"divingType": diving_type, "mode": mode})
+
+
+def start_diving() -> dict:
+    """Start the diving session (after ticket is used). Triggers WebSocket gameplay."""
+    return _request("POST", "/diving/start")
+
+
+# --- Accessories (Upgrades) ---
+
+def get_accessories() -> dict:
+    """Get all accessories with current levels, effects, and available upgrade points."""
+    return _request("GET", "/accessories")
+
+
+def upgrade_accessory(accessory_id: str) -> dict:
+    """Upgrade an accessory by one level (costs upgrade points).
+
+    Args:
+        accessory_id: The accessory ID to upgrade.
+    """
+    return _request("POST", f"/accessories/{accessory_id}/upgrade")
+
+
+def reset_upgrade_points() -> dict:
+    """Reset all upgrade points (respec)."""
+    return _request("POST", "/accessories/reset-available-upgrade-point")
+
+
 # --- Leaderboard ---
 
 def get_leaderboard(rank_type: str = "General") -> dict:

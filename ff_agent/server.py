@@ -12,6 +12,7 @@ from mcp.server.fastmcp import FastMCP  # from pip package 'mcp'
 from ff_agent import auth as ff_auth
 from ff_agent import api_client as api
 from ff_agent import fishing_client
+from ff_agent import diving_client
 from ff_agent import state
 
 # Well-known item IDs
@@ -364,6 +365,156 @@ def collect_pet_fish() -> str:
     """Collect all accumulated fish from your pets."""
     try:
         result = api.collect_pet_fish()
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+# ============================================================
+# Accessories (Upgrades)
+# ============================================================
+
+@server.tool()
+def get_accessories() -> str:
+    """Get all accessories with current levels and available upgrade points.
+
+    Accessories: Rod Handle (energy save), Reel (capture zone), Lucky Charm (item drops),
+    Icebox (gold bonus), Fishing Manual (XP bonus), Cutting Board (bait save)."""
+    try:
+        result = api.get_accessories()
+        if isinstance(result, dict) and "accessories" in result:
+            summary = {
+                "available_upgrade_points": result.get("availableUpgradePoint", 0),
+                "accessories": [],
+            }
+            for acc in result["accessories"]:
+                current_level = acc.get("currentLevel", 0)
+                effects = acc.get("effects", [])
+                current_effect = next(
+                    (e["effect"] for e in effects if e["level"] == current_level), 0
+                )
+                next_effect = next(
+                    (e for e in effects if e["level"] == current_level + 1), None
+                )
+                summary["accessories"].append({
+                    "id": acc.get("accessoryId"),
+                    "name": acc.get("name"),
+                    "description": acc.get("description"),
+                    "level": f"{current_level}/{acc.get('maxLevel', 10)}",
+                    "current_effect": f"{current_effect:.0%}",
+                    "next_upgrade_cost": next_effect["pointsRequired"] if next_effect else "MAX",
+                    "next_effect": f"{next_effect['effect']:.0%}" if next_effect else "MAX",
+                })
+            return json.dumps(summary, indent=2)
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@server.tool()
+def upgrade_accessory(accessory_name: str) -> str:
+    """Upgrade an accessory by one level using upgrade points.
+
+    Args:
+        accessory_name: Name or ID of the accessory. Names: "Rod Handle", "Reel",
+            "Lucky Charm", "Icebox", "Fishing Manual", "Cutting Board"."""
+    try:
+        # Resolve name to ID
+        accessories = api.get_accessories()
+        acc_list = accessories.get("accessories", [])
+        target = None
+        for acc in acc_list:
+            if (accessory_name.lower() in acc.get("name", "").lower()
+                    or accessory_name == acc.get("accessoryId")):
+                target = acc
+                break
+        if not target:
+            return json.dumps({"error": f"Accessory '{accessory_name}' not found",
+                              "available": [a["name"] for a in acc_list]})
+
+        result = api.upgrade_accessory(target["accessoryId"])
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+# ============================================================
+# Diving
+# ============================================================
+
+@server.tool()
+def get_diving_config() -> str:
+    """Get diving game configuration: board sizes, coral rewards, ticket costs.
+    Diving requires level 30+."""
+    try:
+        result = api.get_diving_config()
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@server.tool()
+def get_diving_state() -> str:
+    """Check current diving state — whether a dive is in progress."""
+    try:
+        result = api.get_diving_state()
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@server.tool()
+def buy_diving_ticket(quantity: int = 1) -> str:
+    """Buy a gold diving ticket using gold.
+
+    Args:
+        quantity: Number of tickets to buy (default 1).
+
+    Only Regular (gold-cost) tickets can be bought via API.
+    Premium (RON) and Token (FISH) tickets require on-chain transactions."""
+    try:
+        result = api.buy_diving_ticket_with_gold("Regular", quantity)
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@server.tool()
+def dive(max_picks: int = 0, multiplier: str = "X1") -> str:
+    """Execute a full diving session: use ticket → start → play WebSocket game.
+
+    You must have already bought a gold diving ticket (buy_diving_ticket).
+    Requires level 30+.
+
+    Args:
+        max_picks: Max cells to reveal before cashing out (0 = play until game ends).
+        multiplier: "X1" (normal, 1 ticket) or "X10" (10x rewards, uses 10 tickets).
+
+    Returns dive results: cells revealed, rewards collected, board data."""
+    try:
+        # Step 1: Use the ticket
+        use_result = api.use_diving_ticket("Regular", multiplier)
+        if isinstance(use_result, dict) and use_result.get("code") == 400:
+            return json.dumps({"error": use_result.get("message", "Failed to use ticket")})
+
+        # Step 2: Start the dive (REST)
+        start_result = api.start_diving()
+        if isinstance(start_result, dict) and start_result.get("code") in (400, 404):
+            return json.dumps({"error": start_result.get("message", "Failed to start dive")})
+
+        # Step 3: Play via WebSocket
+        token = ff_auth.get_token()
+        result = diving_client.dive_session(token, max_picks)
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@server.tool()
+def get_diving_jackpots() -> str:
+    """Get current diving jackpot values for all dive types."""
+    try:
+        result = api.get_diving_jackpots()
         return json.dumps(result, indent=2)
     except Exception as e:
         return json.dumps({"error": str(e)})

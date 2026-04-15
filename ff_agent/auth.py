@@ -12,6 +12,7 @@ PRIVY_CLIENT = "react-auth:1.88.4"
 GAME_API = "https://api.fishingfrenzy.co"
 
 CHAIN_ID = 2020  # Ronin
+AGENT_VERSION = "1.0.0"
 
 
 def _privy_headers() -> dict:
@@ -97,6 +98,11 @@ def _authenticate_with_chain(address: str, chain_id: int) -> dict:
                 "deviceId": str(uuid.uuid4()),
                 "teleUserId": None,
                 "teleName": None,
+                "agentMetadata": {
+                    "type": "claude-code-skill",
+                    "version": AGENT_VERSION,
+                    "skill": "fishing-frenzy-agent",
+                },
             },
             headers={
                 "Content-Type": "application/json",
