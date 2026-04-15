@@ -52,6 +52,19 @@ def _init_tables(conn: sqlite3.Connection):
             value TEXT,
             cached_at INTEGER
         );
+
+        CREATE TABLE IF NOT EXISTS action_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id INTEGER,
+            timestamp TEXT,
+            action TEXT,
+            params TEXT,
+            result TEXT,
+            gold_before REAL,
+            gold_after REAL,
+            energy_before INTEGER,
+            energy_after INTEGER
+        );
     """)
     conn.commit()
 
@@ -192,6 +205,46 @@ def get_lifetime_stats() -> dict:
     """).fetchone()
     conn.close()
     return dict(row)
+
+
+# --- Action Log ---
+
+def log_action(action: str, params: dict = None, result: dict = None,
+               gold_before: float = None, gold_after: float = None,
+               energy_before: int = None, energy_after: int = None,
+               session_id: int = None):
+    """Log a game action with optional pre/post state snapshots."""
+    conn = get_connection()
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        """INSERT INTO action_log
+           (session_id, timestamp, action, params, result,
+            gold_before, gold_after, energy_before, energy_after)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (session_id, now, action,
+         json.dumps(params) if params else None,
+         json.dumps(result) if result else None,
+         gold_before, gold_after, energy_before, energy_after)
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_action_log(session_id: int = None, limit: int = 50) -> list[dict]:
+    """Get recent action log entries, optionally filtered by session."""
+    conn = get_connection()
+    if session_id:
+        rows = conn.execute(
+            "SELECT * FROM action_log WHERE session_id = ? ORDER BY id DESC LIMIT ?",
+            (session_id, limit)
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM action_log ORDER BY id DESC LIMIT ?", (limit,)
+        ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 # --- Cache ---

@@ -78,7 +78,7 @@ Choose a strategy:
 | Upgrades | `get_accessories`, `upgrade_accessory` | Spend upgrade points on accessories |
 | Stats | `get_leaderboard`, `get_session_stats` | Rankings, performance tracking |
 
-32 tools total across all game systems.
+36 tools total across all game systems.
 
 ## Demo
 
@@ -124,7 +124,7 @@ When you run `/play`, your agent displays a live game dashboard:
 fishing-frenzy-agent/
 ├── SKILL.md                  ← Strategy brain (edit this to compete!)
 ├── ff_agent/
-│   ├── server.py             ← MCP server — 32 game action tools
+│   ├── server.py             ← MCP server — 36 game action tools
 │   ├── auth.py               ← Privy SIWE wallet auth (Ronin chain)
 │   ├── api_client.py         ← REST API wrapper
 │   ├── fishing_client.py     ← Fishing session protocol

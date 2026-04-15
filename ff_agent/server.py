@@ -1,8 +1,8 @@
 """FastMCP server for Fishing Frenzy Agent — exposes game actions as tools."""
 
 import json
-import sys
 import os
+import sys
 
 # Ensure the parent directory is in the path so we can import our modules
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -29,6 +29,93 @@ server = FastMCP(
 
 
 # ============================================================
+# Error Classification & Verification Helpers
+# ============================================================
+
+def _game_error(action: str, error, api_response: dict = None) -> dict:
+    """Build a structured, actionable error response."""
+    error_str = str(error)
+    error_lower = error_str.lower()
+
+    # Classify the error
+    if isinstance(error, ff_auth.AuthError) or "401" in error_str or "unauthorized" in error_lower:
+        error_type = "auth"
+        suggestion = "Call login() to re-authenticate"
+    elif any(s in error_lower for s in ("timeout", "timed out", "connection")):
+        error_type = "transient"
+        suggestion = "Try again in a few seconds"
+    elif any(s in error_lower for s in ("not enough", "insufficient", "low energy", "low gold")):
+        error_type = "resource_depleted"
+        if "energy" in error_lower:
+            suggestion = "Buy and use sushi to restore 5 energy (costs 500 gold)"
+        else:
+            suggestion = "Fish and sell to earn more gold"
+    elif any(s in error_lower for s in ("already", "claimed", "completed")):
+        error_type = "game_logic"
+        suggestion = "Already done — skip and continue to next action"
+    elif any(s in error_lower for s in ("not found", "invalid", "does not exist")):
+        error_type = "blocked"
+        suggestion = "Check the ID is correct (use get_inventory or get_quests to find valid IDs)"
+    elif any(s in error_lower for s in ("level", "unlock", "requirement")):
+        error_type = "blocked"
+        suggestion = "Level requirement not met — keep fishing to level up"
+    elif "cooldown" in error_lower or "10 seconds" in error_lower:
+        error_type = "game_logic"
+        suggestion = "Wait for the 10-second fishing cooldown before casting again"
+    else:
+        error_type = "unknown"
+        suggestion = "Check the error message and try a different approach"
+
+    # Also classify from API response body
+    if api_response and isinstance(api_response, dict):
+        code = api_response.get("code", api_response.get("statusCode"))
+        msg = api_response.get("message", "")
+        if code and code != 200:
+            error_str = msg or error_str
+            msg_lower = msg.lower() if msg else ""
+            if any(s in msg_lower for s in ("not enough", "insufficient")):
+                error_type = "resource_depleted"
+                if "energy" in msg_lower:
+                    suggestion = "Buy and use sushi to restore 5 energy (costs 500 gold)"
+                elif "gold" in msg_lower:
+                    suggestion = "Fish and sell to earn more gold"
+                else:
+                    suggestion = "Check resource requirements"
+            elif any(s in msg_lower for s in ("already", "claimed")):
+                error_type = "game_logic"
+                suggestion = "Already done — skip and continue"
+
+    return {
+        "success": False,
+        "error_type": error_type,
+        "error": error_str,
+        "suggestion": suggestion,
+        "action": action,
+    }
+
+
+def _tool_error(e, api_response=None):
+    """Build game error, auto-detecting the calling tool name."""
+    action = sys._getframe(1).f_code.co_name
+    return _game_error(action, e, api_response)
+
+
+def _get_profile_snapshot() -> dict:
+    """Quick profile snapshot for verification gates."""
+    try:
+        profile = api.get_me()
+        user = profile if "gold" in profile else profile.get("data", profile)
+        return {
+            "gold": user.get("gold", 0),
+            "energy": user.get("energy", 0),
+            "level": user.get("level", 0),
+            "xp": user.get("exp", user.get("xp", 0)),
+        }
+    except Exception:
+        return {}
+
+
+# ============================================================
 # Account & Auth
 # ============================================================
 
@@ -40,7 +127,7 @@ def setup_account() -> str:
         result = ff_auth.setup_account()
         return json.dumps(result, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps(_game_error("setup_account", e))
 
 
 @server.tool()
@@ -51,7 +138,7 @@ def login() -> str:
         result = ff_auth.login()
         return json.dumps(result, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps(_game_error("login", e))
 
 
 @server.tool()
@@ -74,7 +161,7 @@ def get_profile() -> str:
         }
         return json.dumps(summary, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps(_tool_error(e))
 
 
 # ============================================================
@@ -94,9 +181,12 @@ def fish(range_type: str = "short_range", multiplier: int = 1) -> str:
     try:
         token = ff_auth.get_token()
         result = fishing_client.fish_session(token, range_type, multiplier=multiplier)
+        if result.get("success"):
+            state.log_action("fish", params={"range": range_type, "multiplier": multiplier},
+                             result={"fish": result.get("fish", {}).get("name")})
         return json.dumps(result, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps(_game_error("fish", e))
 
 
 @server.tool()
@@ -142,9 +232,11 @@ def fish_batch(range_type: str = "short_range", count: int = 5,
             "total_gold_value": result["total_gold_value"],
             "casts": casts,
         }
+        state.log_action("fish_batch", params={"range": range_type, "count": count},
+                         result={"successes": result["successes"], "total_gold": result["total_gold_value"]})
         return json.dumps(summary, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps(_game_error("fish_batch", e))
 
 
 # ============================================================
@@ -162,17 +254,30 @@ def sell_fish(fish_id: str, quantity: int = 1) -> str:
         result = api.sell_fish(fish_id, quantity)
         return json.dumps(result, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps(_game_error("sell_fish", e))
 
 
 @server.tool()
 def sell_all_fish() -> str:
-    """Sell ALL fish in inventory at once. Returns total gold earned."""
+    """Sell ALL fish in inventory at once. Returns total gold earned with verification."""
     try:
+        before = _get_profile_snapshot()
         result = api.sell_all_fish()
-        return json.dumps(result, indent=2)
+        after = _get_profile_snapshot()
+        gold_change = after.get("gold", 0) - before.get("gold", 0)
+        result_out = {
+            "result": result,
+            "verified": {
+                "gold_before": before.get("gold", 0),
+                "gold_after": after.get("gold", 0),
+                "gold_change": gold_change,
+            },
+        }
+        state.log_action("sell_all_fish", result=result,
+                         gold_before=before.get("gold"), gold_after=after.get("gold"))
+        return json.dumps(result_out, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps(_game_error("sell_all_fish", e))
 
 
 @server.tool()
@@ -187,22 +292,36 @@ def buy_item(item_name: str, quantity: int = 1, auto_use: bool = True) -> str:
     Known items: "sushi" (restores 5 energy, costs 500 gold)."""
     try:
         item_id = ITEM_NAME_MAP.get(item_name.lower(), item_name)
+        before = _get_profile_snapshot()
         buy_result = api.buy_item(item_id, quantity)
         if buy_result.get("code") and buy_result["code"] != 200:
-            return json.dumps(buy_result, indent=2)
+            return json.dumps(_game_error("buy_item", buy_result.get("message", "Purchase failed"), buy_result))
 
         if auto_use:
             use_result = api.use_item(item_id, quantity)
-            return json.dumps({
+            after = _get_profile_snapshot()
+            result_out = {
                 "bought": quantity,
                 "item": item_name,
                 "used": True,
-                "result": use_result
-            }, indent=2)
+                "result": use_result,
+                "verified": {
+                    "gold_change": after.get("gold", 0) - before.get("gold", 0),
+                    "energy_change": after.get("energy", 0) - before.get("energy", 0),
+                },
+            }
+            state.log_action("buy_item", params={"item": item_name, "quantity": quantity, "auto_use": True},
+                             gold_before=before.get("gold"), gold_after=after.get("gold"),
+                             energy_before=before.get("energy"), energy_after=after.get("energy"))
+            return json.dumps(result_out, indent=2)
 
-        return json.dumps({"bought": quantity, "item": item_name, "used": False, "result": buy_result}, indent=2)
+        after = _get_profile_snapshot()
+        state.log_action("buy_item", params={"item": item_name, "quantity": quantity, "auto_use": False},
+                         gold_before=before.get("gold"), gold_after=after.get("gold"))
+        return json.dumps({"bought": quantity, "item": item_name, "used": False, "result": buy_result,
+                           "verified": {"gold_change": after.get("gold", 0) - before.get("gold", 0)}}, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps(_game_error("buy_item", e))
 
 
 @server.tool()
@@ -217,7 +336,7 @@ def use_item(item_name: str, quantity: int = 1) -> str:
         result = api.use_item(item_id, quantity)
         return json.dumps(result, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps(_tool_error(e))
 
 
 @server.tool()
@@ -227,7 +346,7 @@ def get_shop() -> str:
         result = api.get_shop()
         return json.dumps(result, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps(_tool_error(e))
 
 
 @server.tool()
@@ -237,7 +356,7 @@ def get_inventory() -> str:
         result = api.get_inventory()
         return json.dumps(result, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps(_tool_error(e))
 
 
 # ============================================================
@@ -251,7 +370,7 @@ def get_recipes() -> str:
         result = api.get_active_recipes()
         return json.dumps(result, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps(_tool_error(e))
 
 
 @server.tool()
@@ -268,7 +387,7 @@ def cook(recipe_id: str, quantity: int, fish_ids: list[str],
         result = api.cook(recipe_id, quantity, fish_ids, shiny_fish_ids)
         return json.dumps(result, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps(_tool_error(e))
 
 
 @server.tool()
@@ -282,7 +401,7 @@ def sell_sashimi(sashimi_id: str, quantity: int = 1) -> str:
         result = api.sell_sashimi(sashimi_id, quantity)
         return json.dumps(result, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps(_tool_error(e))
 
 
 @server.tool()
@@ -295,7 +414,7 @@ def spin_cooking_wheel(amount: int = 1) -> str:
         result = api.spin_cooking_wheel(amount)
         return json.dumps(result, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps(_tool_error(e))
 
 
 # ============================================================
@@ -306,10 +425,22 @@ def spin_cooking_wheel(amount: int = 1) -> str:
 def claim_daily_reward() -> str:
     """Claim today's daily login reward. Call once per day."""
     try:
+        before = _get_profile_snapshot()
         result = api.claim_daily_reward()
-        return json.dumps(result, indent=2)
+        after = _get_profile_snapshot()
+        result_out = {
+            "result": result,
+            "verified": {
+                "gold_change": after.get("gold", 0) - before.get("gold", 0),
+                "energy_change": after.get("energy", 0) - before.get("energy", 0),
+                "xp_change": after.get("xp", 0) - before.get("xp", 0),
+            },
+        }
+        state.log_action("claim_daily_reward", result=result,
+                         gold_before=before.get("gold"), gold_after=after.get("gold"))
+        return json.dumps(result_out, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps(_game_error("claim_daily_reward", e))
 
 
 @server.tool()
@@ -319,7 +450,7 @@ def get_quests() -> str:
         result = api.get_user_quests()
         return json.dumps(result, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps(_tool_error(e))
 
 
 @server.tool()
@@ -329,10 +460,21 @@ def claim_quest(quest_id: str) -> str:
     Args:
         quest_id: The quest ID to claim (from get_quests)."""
     try:
+        before = _get_profile_snapshot()
         result = api.claim_quest(quest_id)
-        return json.dumps(result, indent=2)
+        after = _get_profile_snapshot()
+        result_out = {
+            "result": result,
+            "verified": {
+                "gold_change": after.get("gold", 0) - before.get("gold", 0),
+                "xp_change": after.get("xp", 0) - before.get("xp", 0),
+            },
+        }
+        state.log_action("claim_quest", params={"quest_id": quest_id}, result=result,
+                         gold_before=before.get("gold"), gold_after=after.get("gold"))
+        return json.dumps(result_out, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps(_game_error("claim_quest", e))
 
 
 @server.tool()
@@ -345,7 +487,7 @@ def verify_social_quest(quest_id: str) -> str:
         result = api.verify_social_quest(quest_id)
         return json.dumps(result, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps(_tool_error(e))
 
 
 @server.tool()
@@ -355,7 +497,7 @@ def spin_daily_wheel() -> str:
         result = api.spin_daily_wheel()
         return json.dumps(result, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps(_tool_error(e))
 
 
 # ============================================================
@@ -372,7 +514,7 @@ def equip_rod(rod_id: str) -> str:
         result = api.equip_rod(rod_id)
         return json.dumps(result, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps(_tool_error(e))
 
 
 @server.tool()
@@ -385,7 +527,7 @@ def repair_rod(rod_id: str) -> str:
         result = api.repair_rod(rod_id)
         return json.dumps(result, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps(_tool_error(e))
 
 
 @server.tool()
@@ -395,7 +537,7 @@ def collect_pet_fish() -> str:
         result = api.collect_pet_fish()
         return json.dumps(result, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps(_tool_error(e))
 
 
 # ============================================================
@@ -436,7 +578,7 @@ def get_accessories() -> str:
             return json.dumps(summary, indent=2)
         return json.dumps(result, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps(_tool_error(e))
 
 
 @server.tool()
@@ -463,7 +605,7 @@ def upgrade_accessory(accessory_name: str) -> str:
         result = api.upgrade_accessory(target["accessoryId"])
         return json.dumps(result, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps(_tool_error(e))
 
 
 # ============================================================
@@ -478,7 +620,7 @@ def get_diving_config() -> str:
         result = api.get_diving_config()
         return json.dumps(result, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps(_tool_error(e))
 
 
 @server.tool()
@@ -488,7 +630,7 @@ def get_diving_state() -> str:
         result = api.get_diving_state()
         return json.dumps(result, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps(_tool_error(e))
 
 
 @server.tool()
@@ -504,7 +646,7 @@ def buy_diving_ticket(quantity: int = 1) -> str:
         result = api.buy_diving_ticket_with_gold("Regular", quantity)
         return json.dumps(result, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps(_tool_error(e))
 
 
 @server.tool()
@@ -523,19 +665,19 @@ def dive(max_picks: int = 0, multiplier: str = "X1") -> str:
         # Step 1: Use the ticket
         use_result = api.use_diving_ticket("Regular", multiplier)
         if isinstance(use_result, dict) and use_result.get("code") == 400:
-            return json.dumps({"error": use_result.get("message", "Failed to use ticket")})
+            return json.dumps(_game_error("dive", use_result.get("message", "Failed to use ticket"), use_result))
 
         # Step 2: Start the dive (REST)
         start_result = api.start_diving()
         if isinstance(start_result, dict) and start_result.get("code") in (400, 404):
-            return json.dumps({"error": start_result.get("message", "Failed to start dive")})
+            return json.dumps(_game_error("dive", start_result.get("message", "Failed to start dive"), start_result))
 
         # Step 3: Play via WebSocket
         token = ff_auth.get_token()
         result = diving_client.dive_session(token, max_picks)
         return json.dumps(result, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps(_tool_error(e))
 
 
 @server.tool()
@@ -545,7 +687,7 @@ def get_diving_jackpots() -> str:
         result = api.get_diving_jackpots()
         return json.dumps(result, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps(_tool_error(e))
 
 
 # ============================================================
@@ -559,7 +701,7 @@ def get_chests() -> str:
         result = api.get_inventory_chests()
         return json.dumps(result, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps(_tool_error(e))
 
 
 @server.tool()
@@ -589,7 +731,7 @@ def open_chests(chest_ids: list[str] = None) -> str:
             result = api.open_chests_batch(chest_ids)
         return json.dumps(result, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps(_tool_error(e))
 
 
 # ============================================================
@@ -608,7 +750,7 @@ def start_play_session(strategy: str = "balanced") -> str:
         session_id = state.start_session(strategy)
         return json.dumps({"session_id": session_id, "strategy": strategy, "status": "started"})
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps(_tool_error(e))
 
 
 @server.tool()
@@ -633,7 +775,7 @@ def end_play_session(session_id: int, fish_caught: int = 0,
             "lifetime": lifetime,
         }, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps(_tool_error(e))
 
 
 # ============================================================
@@ -650,7 +792,7 @@ def get_leaderboard(rank_type: str = "General") -> str:
         result = api.get_leaderboard(rank_type)
         return json.dumps(result, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps(_tool_error(e))
 
 
 @server.tool()
@@ -665,7 +807,7 @@ def get_session_stats() -> str:
             "recent_sessions": recent,
         }, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps(_tool_error(e))
 
 
 # ============================================================

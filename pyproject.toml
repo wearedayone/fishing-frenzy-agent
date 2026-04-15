@@ -1,0 +1,7 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "diving: requires level 30+",
+]
+timeout = 60
+addopts = "-v --tb=long -s"
