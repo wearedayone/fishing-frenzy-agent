@@ -176,31 +176,45 @@ def sell_all_fish() -> str:
 
 
 @server.tool()
-def buy_item(item_name: str, quantity: int = 1) -> str:
-    """Buy an item from the shop by name.
+def buy_item(item_name: str, quantity: int = 1, auto_use: bool = True) -> str:
+    """Buy an item from the shop by name. For consumables like sushi, auto-uses after buying.
 
     Args:
         item_name: Item name (e.g. "sushi") or item ID.
         quantity: Number to buy.
+        auto_use: If True, automatically use consumable items after buying (default: True).
 
     Known items: "sushi" (restores 5 energy, costs 500 gold)."""
     try:
         item_id = ITEM_NAME_MAP.get(item_name.lower(), item_name)
-        result = api.buy_item(item_id, quantity)
-        return json.dumps(result, indent=2)
+        buy_result = api.buy_item(item_id, quantity)
+        if buy_result.get("code") and buy_result["code"] != 200:
+            return json.dumps(buy_result, indent=2)
+
+        if auto_use:
+            use_result = api.use_item(item_id, quantity)
+            return json.dumps({
+                "bought": quantity,
+                "item": item_name,
+                "used": True,
+                "result": use_result
+            }, indent=2)
+
+        return json.dumps({"bought": quantity, "item": item_name, "used": False, "result": buy_result}, indent=2)
     except Exception as e:
         return json.dumps({"error": str(e)})
 
 
 @server.tool()
-def use_item(item_name: str) -> str:
-    """Use a consumable item (sushi, bait, scroll, etc.).
+def use_item(item_name: str, quantity: int = 1) -> str:
+    """Use a consumable item (sushi, bait, scroll, etc.) from inventory.
 
     Args:
-        item_name: Item name (e.g. "sushi") or item ID."""
+        item_name: Item name (e.g. "sushi") or item ID.
+        quantity: Number to use."""
     try:
         item_id = ITEM_NAME_MAP.get(item_name.lower(), item_name)
-        result = api.use_item(item_id)
+        result = api.use_item(item_id, quantity)
         return json.dumps(result, indent=2)
     except Exception as e:
         return json.dumps({"error": str(e)})

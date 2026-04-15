@@ -83,11 +83,11 @@ def buy_item(item_id: str, quantity: int = 1) -> dict:
     return _request("GET", f"/items/{item_id}/buy?userId={user_id}&quantity={quantity}")
 
 
-def use_item(item_id: str) -> dict:
+def use_item(item_id: str, quantity: int = 1) -> dict:
     """Use a consumable item (sushi, bait, scroll)."""
     from . import state
     user_id = state.get_auth("user_id")
-    return _request("GET", f"/items/{item_id}/use?userId={user_id}")
+    return _request("GET", f"/items/{item_id}/use?userId={user_id}&quantity={quantity}")
 
 
 # --- Cooking ---

@@ -28,11 +28,13 @@ Sell a specific fish type from inventory.
 ### `sell_all_fish()`
 Sell ALL fish in inventory at once. Returns total gold earned.
 
-### `buy_item(item_name, quantity)`
-Buy an item by name (e.g. `"sushi"`) or by item ID.
+### `buy_item(item_name, quantity, auto_use=True)`
+Buy an item by name (e.g. `"sushi"`) or by item ID. By default, consumable items like sushi are automatically used after buying — so `buy_item("sushi", 2)` will both purchase and consume 2 sushi, restoring 10 energy.
 
-### `use_item(item_name)`
-Use a consumable item (sushi, bait, scroll).
+Set `auto_use=False` to buy without using (item goes to inventory).
+
+### `use_item(item_name, quantity=1)`
+Use a consumable item from inventory. Supports using multiple at once (e.g. `use_item("sushi", 3)`).
 
 ### `get_shop()`
 List all available shop items with prices.
