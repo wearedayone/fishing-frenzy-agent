@@ -14,6 +14,7 @@ from ff_agent import api_client as api
 from ff_agent import fishing_client
 from ff_agent import diving_client
 from ff_agent import state
+from ff_agent import strategy as strat
 
 # Well-known item IDs
 SUSHI_ITEM_ID = "668d070357fb368ad9e91c8a"
@@ -784,6 +785,165 @@ def open_chests(chest_ids: list[str] = None) -> str:
 
 
 # ============================================================
+# Fish Collection & Aquarium
+# ============================================================
+
+@server.tool()
+def get_fish_collection() -> str:
+    """View full fish collection progress — all species, counts, and milestones."""
+    try:
+        result = api.get_fish_collection()
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        return json.dumps(_tool_error(e))
+
+
+@server.tool()
+def collect_fish(fish_id: str, quantity: int = 1) -> str:
+    """Collect a specific fish into the aquarium. PERMANENTLY consumes the fish from inventory.
+
+    Args:
+        fish_id: The fish info ID (from inventory).
+        quantity: Number to collect."""
+    try:
+        result = api.collect_fish(fish_id, quantity)
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        return json.dumps(_tool_error(e))
+
+
+@server.tool()
+def collect_all_non_nft_fish() -> str:
+    """Collect ALL non-NFT fish into the aquarium at once.
+    PERMANENTLY consumes all non-NFT fish from inventory.
+    Use when you want to maximize collection EXP quickly."""
+    try:
+        result = api.collect_all_fish()
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        return json.dumps(_tool_error(e))
+
+
+@server.tool()
+def get_collection_overview() -> str:
+    """Get aquarium overview: collection levels, total EXP, and milestone progress."""
+    try:
+        result = api.get_collection_overview()
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        return json.dumps(_tool_error(e))
+
+
+@server.tool()
+def claim_collection_rewards() -> str:
+    """Claim any available aquarium level milestone rewards."""
+    try:
+        result = api.claim_collection_overview_reward()
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        return json.dumps(_tool_error(e))
+
+
+@server.tool()
+def claim_fish_collection_reward(collection_id: str) -> str:
+    """Claim reward for a specific fish collection entry.
+
+    Args:
+        collection_id: The collection entry ID (from get_fish_collection)."""
+    try:
+        result = api.claim_collection_reward(collection_id)
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        return json.dumps(_tool_error(e))
+
+
+@server.tool()
+def admire_aquarium() -> str:
+    """Admire a random top-100 Prestige aquarium for 20 gold. Once per day.
+    Earns collection EXP and counts toward daily quests."""
+    try:
+        result = api.admire_aquarium()
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        return json.dumps(_tool_error(e))
+
+
+# ============================================================
+# On-Chain / Blockchain
+# ============================================================
+
+@server.tool()
+def get_wallet_balances() -> str:
+    """Get on-chain wallet balances: RON, FISH, and xFISH.
+    Reads directly from the Ronin blockchain."""
+    try:
+        from ff_agent import chain
+        ron = chain.get_ron_balance()
+        fish = chain.get_fish_balance()
+        xfish = chain.get_xfish_balance()
+        return json.dumps({
+            "RON": round(ron, 6),
+            "FISH": round(fish, 2),
+            "xFISH": round(xfish, 2),
+        }, indent=2)
+    except Exception as e:
+        return json.dumps(_tool_error(e))
+
+
+@server.tool()
+def onchain_checkin() -> str:
+    """Perform the daily on-chain check-in. Costs a small RON fee.
+    Different from claim_daily_reward — this is the blockchain check-in
+    that awards Karma and streak bonuses."""
+    try:
+        from ff_agent import chain
+        result = chain.daily_checkin()
+        state.log_action("onchain_checkin", result=result)
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        return json.dumps(_tool_error(e))
+
+
+@server.tool()
+def mint_leaderboard_chests(chest_token_ids: list[int]) -> str:
+    """Mint leaderboard chests on-chain so they can be opened.
+
+    Leaderboard chests exist as NFTs that must be minted before opening.
+    After minting, use open_chests() to open them.
+
+    Args:
+        chest_token_ids: List of chest token IDs to mint (from get_chests)."""
+    try:
+        from ff_agent import chain
+        result = chain.mint_chests(chest_token_ids)
+        state.log_action("mint_leaderboard_chests",
+                         params={"chest_token_ids": chest_token_ids},
+                         result=result)
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        return json.dumps(_tool_error(e))
+
+
+@server.tool()
+def stake_fish_tokens(amount: float, duration_months: int = 1) -> str:
+    """Stake FISH tokens for Karma. Requires FISH in wallet.
+
+    Args:
+        amount: Amount of FISH to stake (e.g. 100.0).
+        duration_months: Lock duration in months (1, 3, 6, or 12).
+            Longer durations earn more Karma."""
+    try:
+        from ff_agent import chain
+        result = chain.stake_fish(amount, duration_months)
+        state.log_action("stake_fish_tokens",
+                         params={"amount": amount, "duration_months": duration_months},
+                         result=result)
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        return json.dumps(_tool_error(e))
+
+
+# ============================================================
 # Session & Heartbeat
 # ============================================================
 
@@ -823,6 +983,120 @@ def end_play_session(session_id: int, fish_caught: int = 0,
             "status": "ended",
             "lifetime": lifetime,
         }, indent=2)
+    except Exception as e:
+        return json.dumps(_tool_error(e))
+
+
+# ============================================================
+# Strategy Advice
+# ============================================================
+
+def _parse_config() -> strat.StrategyConfig:
+    """Parse CONFIG.md into a StrategyConfig. Falls back to balanced defaults."""
+    import re
+    config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "CONFIG.md")
+    try:
+        with open(config_path) as f:
+            content = f.read()
+    except FileNotFoundError:
+        return strat.STRATEGY_DEFAULTS["balanced"]
+
+    def _val(key, default=""):
+        m = re.search(rf"^{re.escape(key)}:\s*(.+)$", content, re.MULTILINE)
+        return m.group(1).strip() if m else default
+
+    strategy_name = _val("STRATEGY", "balanced")
+    base = strat.STRATEGY_DEFAULTS.get(strategy_name, strat.STRATEGY_DEFAULTS["balanced"])
+
+    return strat.StrategyConfig(
+        strategy=strategy_name,
+        sushi_buy_threshold=float(_val("SUSHI_BUY_THRESHOLD", str(base.sushi_buy_threshold))),
+        gold_reserve=float(_val("GOLD_RESERVE", str(base.gold_reserve))),
+        diving_gold_threshold=float(_val("DIVING_GOLD_THRESHOLD", str(base.diving_gold_threshold))),
+        fishing_strategy=_val("FISHING_STRATEGY", base.fishing_strategy),
+        fish_disposal=_val("FISH_DISPOSAL", base.fish_disposal),
+        max_sushi_per_session=int(_val("MAX_SUSHI_PER_SESSION", str(base.max_sushi_per_session))),
+        use_multiplier=_val("USE_MULTIPLIER", "false").lower() == "true",
+        dive_risk=_val("DIVE_RISK", base.dive_risk),
+        dive_max_picks=int(_val("DIVE_MAX_PICKS", str(base.dive_max_picks))),
+        upgrade_order=_val("UPGRADE_ORDER", base.upgrade_order),
+        cook_before_sell=_val("COOK_BEFORE_SELL", "true").lower() == "true",
+        spin_cooking_wheel=_val("SPIN_COOKING_WHEEL", "true").lower() == "true",
+    )
+
+
+@server.tool()
+def get_strategy_advice(gold: float = 0, energy: int = 0, level: int = 1,
+                        has_bait_medium: bool = False, has_bait_big: bool = False,
+                        has_recipe_match: bool = False, sushi_bought: int = 0) -> str:
+    """Get strategy recommendations based on current game state and CONFIG.md settings.
+
+    Pass your current state to get concrete decisions: which range to fish,
+    whether to buy sushi, whether to dive, what to do with fish, and which
+    accessory to upgrade next.
+
+    Args:
+        gold: Current gold balance.
+        energy: Current energy.
+        level: Player level.
+        has_bait_medium: Whether Medium Bait is in inventory.
+        has_bait_big: Whether Big Bait is in inventory.
+        has_recipe_match: Whether current fish match an active recipe.
+        sushi_bought: Number of sushi already bought this session."""
+    try:
+        config = _parse_config()
+        game_state = strat.GameState(
+            gold=gold, energy=energy, level=level,
+            has_bait_medium=has_bait_medium, has_bait_big=has_bait_big,
+            has_recipe_match=has_recipe_match,
+            sushi_bought_this_session=sushi_bought,
+        )
+
+        advice = {
+            "strategy": config.strategy,
+            "fishing_range": strat.get_fishing_range(game_state, config),
+            "should_buy_sushi": strat.should_buy_sushi(game_state, config),
+            "should_dive": strat.should_dive(game_state, config),
+            "fish_disposal": strat.get_fish_disposal_action(game_state, config).value,
+            "dive_max_picks": strat.get_dive_max_picks(config),
+            "thresholds": {
+                "sushi_buy_at": config.sushi_buy_threshold + config.gold_reserve,
+                "dive_at": config.diving_gold_threshold + config.gold_reserve,
+                "gold_reserve": config.gold_reserve,
+            },
+        }
+        return json.dumps(advice, indent=2)
+    except Exception as e:
+        return json.dumps(_tool_error(e))
+
+
+@server.tool()
+def get_next_upgrade_advice() -> str:
+    """Get which accessory to upgrade next based on strategy and current levels.
+
+    Reads CONFIG.md strategy and fetches current accessory levels from the game API."""
+    try:
+        config = _parse_config()
+        accessories = api.get_accessories()
+        acc_list = accessories.get("accessories", [])
+
+        current_levels = {}
+        max_levels = {}
+        for acc in acc_list:
+            name = acc.get("name", "")
+            current_levels[name] = acc.get("currentLevel", 0)
+            max_levels[name] = acc.get("maxLevel", 10)
+
+        recommendation = strat.get_next_upgrade(config, current_levels, max_levels)
+        available_points = accessories.get("availableUpgradePoint", 0)
+
+        result = {
+            "recommended_upgrade": recommendation,
+            "available_points": available_points,
+            "can_upgrade": recommendation is not None and available_points > 0,
+            "current_levels": current_levels,
+        }
+        return json.dumps(result, indent=2)
     except Exception as e:
         return json.dumps(_tool_error(e))
 

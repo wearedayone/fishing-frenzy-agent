@@ -8,6 +8,7 @@ SUSHI_ITEM_ID = "668d070357fb368ad9e91c8a"
 FAKE_OBJECT_ID = "000000000000000000000000"
 
 
+@pytest.mark.live
 class TestEdgeCases:
     """Edge cases, error handling, and boundary conditions (10 tests)."""
 

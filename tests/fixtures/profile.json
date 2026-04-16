@@ -1,0 +1,16 @@
+{
+  "username": "TestBot_0xABCD",
+  "level": 25,
+  "xp": 12450,
+  "exp": 12450,
+  "gold": 3200.5,
+  "energy": 14,
+  "maxEnergy": 30,
+  "karma": 85000,
+  "walletAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+  "equippedRod": {
+    "_id": "rod_001",
+    "name": "Golden Rod",
+    "durability": 85
+  }
+}

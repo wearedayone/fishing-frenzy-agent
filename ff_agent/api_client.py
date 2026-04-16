@@ -253,6 +253,62 @@ def open_chests_batch(chest_ids: list) -> dict:
     return _request("POST", "/chests/open-batch", json={"chests": chest_ids})
 
 
+# --- Fish Collection ---
+
+def get_fish_collection() -> dict:
+    """Get full fish collection progress."""
+    return _request("GET", "/fish-collection")
+
+
+def collect_fish(fish_id: str, quantity: int = 1) -> dict:
+    """Collect a specific fish into the aquarium (permanently consumes it)."""
+    return _request("POST", "/fish-collection/collect",
+                     json={"fishId": fish_id, "quantity": quantity})
+
+
+def collect_all_fish() -> dict:
+    """Collect all non-NFT fish into the aquarium at once."""
+    return _request("POST", "/fish-collection/collect/all")
+
+
+def get_collection_overview() -> dict:
+    """Get aquarium collection overview (levels, total EXP)."""
+    return _request("GET", "/fish-collection/overview")
+
+
+def get_collection_overview_reward() -> dict:
+    """Get available aquarium level rewards."""
+    return _request("GET", "/fish-collection/overview-reward")
+
+
+def claim_collection_overview_reward() -> dict:
+    """Claim aquarium level milestone rewards."""
+    return _request("POST", "/fish-collection/overview-reward/claim")
+
+
+def get_collection_reward(collection_id: str) -> dict:
+    """Get reward info for a specific fish collection entry."""
+    return _request("GET", f"/fish-collection/rewards/{collection_id}")
+
+
+def claim_collection_reward(collection_id: str) -> dict:
+    """Claim reward for a specific fish collection entry."""
+    return _request("POST", "/fish-collection/rewards/claim",
+                     json={"collectionId": collection_id})
+
+
+# --- Admire ---
+
+def admire_aquarium() -> dict:
+    """Admire a top-100 aquarium for 20 gold (once per day)."""
+    return _request("POST", "/admire")
+
+
+def get_admire_today() -> dict:
+    """Check if aquarium has been admired today."""
+    return _request("GET", "/admire/today")
+
+
 # --- Leaderboard ---
 
 def get_leaderboard(rank_type: str = "General") -> dict:

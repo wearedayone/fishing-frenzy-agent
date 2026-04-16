@@ -3,6 +3,7 @@
 import pytest
 
 
+@pytest.mark.live
 @pytest.mark.diving
 class TestDiving:
     """Diving gameplay (5 tests). Requires level 30+ and gold."""

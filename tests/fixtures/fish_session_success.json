@@ -1,0 +1,21 @@
+{
+  "success": true,
+  "session_id": "sess_abc123",
+  "range": "short_range",
+  "multiplier": 1,
+  "fish": {
+    "name": "Golden Koi",
+    "quality": 5,
+    "xp_gain": 25,
+    "sell_price": 80,
+    "weight": 3.2,
+    "image": "golden_koi.png"
+  },
+  "player": {
+    "level": 25,
+    "exp": 12475,
+    "energy_remaining": 13
+  },
+  "new_unlocks": [],
+  "refunds": {}
+}

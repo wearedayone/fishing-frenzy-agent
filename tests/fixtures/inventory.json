@@ -1,0 +1,41 @@
+{
+  "fish": [
+    {
+      "fishInfoId": "fish_tuna_001",
+      "fishName": "Bluefin Tuna",
+      "quantity": 3,
+      "quality": 4,
+      "sellPrice": 45
+    },
+    {
+      "fishInfoId": "fish_snapper_002",
+      "fishName": "Red Snapper",
+      "quantity": 5,
+      "quality": 2,
+      "sellPrice": 22
+    }
+  ],
+  "items": [
+    {
+      "_id": "668d070357fb368ad9e91c8a",
+      "name": "Sushi",
+      "quantity": 2,
+      "type": "consumable"
+    },
+    {
+      "_id": "item_bait_medium_001",
+      "name": "Medium Bait",
+      "quantity": 10,
+      "type": "bait"
+    }
+  ],
+  "rods": [
+    {
+      "_id": "rod_001",
+      "name": "Golden Rod",
+      "durability": 85,
+      "equipped": true
+    }
+  ],
+  "chests": []
+}

@@ -2,6 +2,7 @@
 testpaths = ["tests"]
 markers = [
     "diving: requires level 30+",
+    "live: test requires a live API connection",
 ]
 timeout = 60
 addopts = "-v --tb=long -s"

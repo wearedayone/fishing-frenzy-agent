@@ -1,0 +1,17 @@
+{
+  "success": true,
+  "totalGold": 245,
+  "fishSold": 8,
+  "details": [
+    {
+      "fishName": "Bluefin Tuna",
+      "quantity": 3,
+      "goldEarned": 135
+    },
+    {
+      "fishName": "Red Snapper",
+      "quantity": 5,
+      "goldEarned": 110
+    }
+  ]
+}

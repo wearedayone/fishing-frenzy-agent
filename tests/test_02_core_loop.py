@@ -9,6 +9,7 @@ from .helpers import get_current_profile, wait_for_cooldown
 SUSHI_ITEM_ID = "668d070357fb368ad9e91c8a"
 
 
+@pytest.mark.live
 class TestCoreLoop:
     """Core gameplay loop (14 tests)."""
 

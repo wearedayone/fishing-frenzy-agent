@@ -11,6 +11,10 @@ context:
   - references/diving.md
   - references/quests.md
   - references/equipment.md
+  - references/collecting.md
+  - references/chests.md
+  - references/leaderboards.md
+  - references/token.md
 ---
 
 # Fishing Frenzy Agent — Play Skill
@@ -116,17 +120,26 @@ Track throughout: fish caught, gold earned, XP earned, energy spent, sushi bough
 2.  SESSION     — start_play_session(strategy) to begin tracking
 3.  PROFILE     — get_profile(), display dashboard
 4.  DAILY       — claim_daily_reward()
-5.  CHESTS      — get_chests(), open any available (starter chests, reward chests)
+5.  CHESTS      — get_chests(), open any available (starter/reward chests open directly;
+                  leaderboard chests need minting first — skip if can't mint)
 6.  PETS        — collect_pet_fish()
 7.  QUESTS      — get_quests(), claim completed
-8.  ACCESSORIES — get_accessories(), spend upgrade points
-9.  FISH        — fish_batch() until energy depleted
-10. SELL        — sell_all_fish()
-11. COOK        — cook if recipe fish available
-12. WHEELS      — spin_daily_wheel(), spin_cooking_wheel()
-13. SUSHI       — buy + use if gold threshold met, then fish more
-14. DIVE        — if level >= 30 and gold >= 2500
-15. END         — end_play_session(session_id, stats) + display session summary
+8.  ACCESSORIES — get_accessories(), spend upgrade points per strategy
+9.  THEMES      — check for active event themes; if one exists, fish there instead of default
+                  (event themes have exclusive drops and are time-limited — typically better)
+10. FISH        — fish_batch() using FISHING_STRATEGY range/bait pairing, until energy depleted
+11. COOK        — cook if recipe fish available (MUST come before sell/collect)
+12. DISPOSE     — based on FISH_DISPOSAL setting:
+                  sell_all: sell_all_fish() (sells remaining fish not used for cooking)
+                  hold: keep fish in inventory for manual decisions
+                  (Future: collect fish toward aquarium milestones before selling remainder)
+13. WHEELS      — spin_daily_wheel() (if 2000+ quest pts), spin_cooking_wheel()
+                  if karma >= 120k: spin karma wheel for xFISH
+14. ADMIRE      — admire a random top-100 aquarium for 20 gold (once per day)
+15. SUSHI       — buy + use if gold threshold met, then fish more (repeat 10-12)
+16. DIVE        — if level >= 30 and gold >= 2500
+17. LEADERBOARD — get_leaderboard() to check standing (informational)
+18. END         — end_play_session(session_id, stats) + display session summary
 ```
 
 **Important**: Call `start_play_session()` at the beginning and `end_play_session()` at the end to track lifetime stats.
@@ -134,25 +147,26 @@ Track throughout: fish caught, gold earned, XP earned, energy spent, sushi bough
 ## Strategy Templates
 
 ### Balanced (Default)
-- Fish with optimal range per energy level
-- Sell after each batch
+- Fishing: **Medium** strategy (mid_range + Medium Bait) if bait available, otherwise **Short** (short_range, no bait)
+- Fish disposal: Cook matching fish → sell the rest
 - Buy 1 sushi if gold > 1500
 - Complete all quests, cook if recipes match
-- Upgrade accessories evenly
+- Upgrades: Rod Handle → Icebox → Reel → Fishing Manual → Cutting Board → Lucky Charm
 
 ### Grind
-- Always `short_range` for max casts
-- Sell immediately, never hold fish
+- Fishing: **Short** strategy (short_range, no bait) — max casts per energy
+- Fish disposal: Sell all immediately (skip cooking unless quest requires it)
 - Buy sushi at gold > 800
-- Skip cooking unless quest requires it
-- Prioritize: Fishing Manual → Rod Handle
+- Upgrades: Fishing Manual → Rod Handle → Reel → Icebox → Lucky Charm → Cutting Board
+  (XP first to level faster, Rod Handle for free casts, Reel to reduce escapes)
 
 ### Efficiency
-- Always `long_range` for best gold/energy
-- Hold rare+ fish for cooking
+- Fishing: **Long** strategy (long_range + Big Bait) if bait available, otherwise **Medium** or **Short**
+- Fish disposal: Cook matching fish → collect fish near aquarium milestones → sell remainder
 - Buy sushi at gold > 2000
 - Prioritize cooking wheel for xFISH
-- Prioritize: Icebox → Rod Handle
 - Dive when affordable
+- Upgrades: Icebox → Rod Handle → Cutting Board → Reel → Fishing Manual → Lucky Charm
+  (Gold bonus first since selling is the main income, Cutting Board to stretch bait)
 
 If the user specified a strategy argument (e.g. `/play grind`), use that. Otherwise default to **balanced**.

@@ -56,30 +56,35 @@ else
     echo ""
 fi
 
-# Step 4: Strategy selection
+# Step 4: Preferences questionnaire
 echo ""
-echo "  Choose your starting strategy:"
-echo ""
-echo "    1) balanced    — Even split: fish, cook, quests (recommended)"
-echo "    2) grind       — Max XP, aggressive sushi, short range"
-echo "    3) efficiency  — Best gold/energy, long range, cooking focus"
-echo ""
-read -p "  Strategy [1/2/3, default=1]: " STRATEGY_CHOICE
+if command -v python3 &> /dev/null; then
+    echo "  Configuring your agent preferences..."
+    python3 "$SCRIPT_DIR/setup_preferences.py"
+else
+    # Fallback: bare strategy picker if python3 unavailable
+    echo "  Choose your starting strategy:"
+    echo ""
+    echo "    1) balanced    — Even split: fish, cook, quests (recommended)"
+    echo "    2) grind       — Max XP, aggressive sushi, short range"
+    echo "    3) efficiency  — Best gold/energy, long range, cooking focus"
+    echo ""
+    read -p "  Strategy [1/2/3, default=1]: " STRATEGY_CHOICE
 
-case "$STRATEGY_CHOICE" in
-    2) STRATEGY="grind" ;;
-    3) STRATEGY="efficiency" ;;
-    *) STRATEGY="balanced" ;;
-esac
+    case "$STRATEGY_CHOICE" in
+        2) STRATEGY="grind" ;;
+        3) STRATEGY="efficiency" ;;
+        *) STRATEGY="balanced" ;;
+    esac
 
-# Update CONFIG.md with chosen strategy
-if [ -f "$CONFIG_PATH" ]; then
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        sed -i '' "s/^STRATEGY: .*/STRATEGY: $STRATEGY/" "$CONFIG_PATH"
-    else
-        sed -i "s/^STRATEGY: .*/STRATEGY: $STRATEGY/" "$CONFIG_PATH"
+    if [ -f "$CONFIG_PATH" ]; then
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            sed -i '' "s/^STRATEGY: .*/STRATEGY: $STRATEGY/" "$CONFIG_PATH"
+        else
+            sed -i "s/^STRATEGY: .*/STRATEGY: $STRATEGY/" "$CONFIG_PATH"
+        fi
+        echo "  Strategy set to: $STRATEGY"
     fi
-    echo "  Strategy set to: $STRATEGY"
 fi
 
 # Done
