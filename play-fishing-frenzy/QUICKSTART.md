@@ -18,7 +18,7 @@ Works with Claude Code, Cursor, Cline, Windsurf, OpenClaw, and any MCP-compatibl
 ## Install
 
 ```bash
-npx skills add wearedayone/fishing-frenzy-agent --all --global -y && bash ~/.agents/skills/play-fishing-frenzy/scripts/setup.sh
+npx skills add wearedayone/play-fishing-frenzy --all --global -y && bash ~/.agents/skills/play-fishing-frenzy/scripts/setup.sh
 ```
 
 This installs the skill, Python dependencies, and registers the MCP server for every detected AI tool.
@@ -29,7 +29,7 @@ Restart your AI tool. That's it.
 <summary>Alternative: clone manually</summary>
 
 ```bash
-git clone https://github.com/wearedayone/fishing-frenzy-agent
+git clone https://github.com/wearedayone/play-fishing-frenzy
 cd fishing-frenzy-agent
 bash scripts/setup.sh
 ```

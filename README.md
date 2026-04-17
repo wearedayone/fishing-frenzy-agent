@@ -14,7 +14,7 @@ Works with any AI tool that supports [MCP](https://modelcontextprotocol.io) — 
 ## Install
 
 ```bash
-npx skills add wearedayone/fishing-frenzy-agent --all --global -y && bash ~/.agents/skills/play-fishing-frenzy/scripts/setup.sh
+npx skills add wearedayone/play-fishing-frenzy --all --global -y && bash ~/.agents/skills/play-fishing-frenzy/scripts/setup.sh
 ```
 
 This installs the skill + Python dependencies, and registers the MCP server for every detected AI tool (Claude Code, Cursor, Cline, Windsurf, OpenClaw).
@@ -29,7 +29,7 @@ Restart your AI tool, then type:
 <summary>Alternative: clone manually</summary>
 
 ```bash
-git clone https://github.com/wearedayone/fishing-frenzy-agent
+git clone https://github.com/wearedayone/play-fishing-frenzy
 cd fishing-frenzy-agent
 bash scripts/setup.sh
 ```
@@ -201,7 +201,7 @@ fishing-frenzy-agent/
 
 **SKILL.md** teaches your AI agent how to play — the game loop, decision framework, and strategy templates. Edit this file to change how your agent plays.
 
-**MCP Server** (`ff_agent/server.py`) exposes game actions as tools that your AI agent calls autonomously.
+**MCP Server** (`ff_agent/server.py`) exposes game actions as tools that your AI agent calls autonomously. This includes blockchain interactions — the agent manages its own Ethereum wallet on Ronin, handles SIWE authentication, and can mint NFTs, open chests, and perform on-chain check-ins when funded with RON.
 
 ## Customizing Your Strategy
 

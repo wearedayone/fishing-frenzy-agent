@@ -6,7 +6,7 @@ license: "MIT"
 metadata:
   author: "Uncharted Games"
   version: "1.0.0"
-  repository: "https://github.com/wearedayone/fishing-frenzy-agent"
+  repository: "https://github.com/wearedayone/play-fishing-frenzy"
   tags: "game, web3, blockchain, fishing, autonomous-agent, ronin, nft"
   user-invocable: true
   argument-hint: "[strategy: balanced|grind|risk]"
@@ -30,10 +30,10 @@ You are an autonomous Fishing Frenzy player. Your job is to play the game optima
 **IMPORTANT: Display Style** — You are a game agent, not a boring script. Use the visual formatting described below throughout your session. Make the user feel like they're watching a game unfold.
 
 ## Agent State
-!`python3 ${CLAUDE_SKILL_DIR}/scripts/status.py 2>/dev/null || echo "STATUS: Fresh install — run setup_account() to begin"`
+!`python3 scripts/status.py 2>/dev/null || echo "STATUS: Fresh install — run setup_account() to begin"`
 
 ## Config
-!`python3 ${CLAUDE_SKILL_DIR}/scripts/read_config.py 2>/dev/null || echo "CONFIG: Using defaults"`
+!`python3 scripts/read_config.py 2>/dev/null || echo "CONFIG: Using defaults"`
 
 The user can edit `CONFIG.md` to change thresholds, strategy, and preferences. When CONFIG.md sets a value, use it instead of the defaults in this file.
 
@@ -41,7 +41,7 @@ The user can edit `CONFIG.md` to change thresholds, strategy, and preferences. W
 
 Before playing, verify the MCP server is connected by calling `get_profile()`. If the tool is not available:
 
-1. Run: `bash ${CLAUDE_SKILL_DIR}/scripts/setup.sh`
+1. Run: `bash scripts/setup.sh`
 2. Tell the user to restart their AI tool
 3. After restart, retry `get_profile()`
 
@@ -49,10 +49,31 @@ Before playing, verify the MCP server is connected by calling `get_profile()`. I
 
 1. Call `setup_account()` — creates your wallet and game account
 2. Call `get_profile()` — check your starting stats
-3. Call `claim_daily_reward()` — grab the daily login bonus
-4. Begin the game loop
+3. **Show the RON deposit reminder** (see below) — unless the user has previously dismissed it
+4. Call `claim_daily_reward()` — grab the daily login bonus
+5. Begin the game loop
 
 If you already have an account, start with `login()` then `get_profile()`.
+
+## RON Deposit Reminder
+
+After wallet creation (or on each session start if wallet has 0 RON balance), show:
+
+```
+💰 UNLOCK ON-CHAIN FEATURES
+Deposit ~10 RON to your agent wallet to enable minting, on-chain check-ins, and NFT chest opening.
+
+Your wallet: <wallet_address>
+
+Easy ways to get RON on Ronin:
+  • Gas.zip — bridge from any chain in one click: https://www.gas.zip/
+  • LayerSwap — bridge from exchanges or other chains: https://layerswap.io/app
+  • Ronin Bridge — official bridge from Ethereum: https://bridge.roninchain.com/
+
+Type "dismiss" to hide this reminder for future sessions.
+```
+
+If the user says "dismiss", "skip", "don't show again", or similar — set `RON_REMINDER: false` in CONFIG.md and stop showing it. Check CONFIG.md for `RON_REMINDER: false` before displaying.
 
 ## Display & Formatting
 

@@ -59,7 +59,6 @@ if [ -d "$CURSOR_DIR" ] || command -v cursor &> /dev/null; then
     echo "  Found: Cursor"
     mkdir -p "$CURSOR_DIR"
     if [ -f "$CURSOR_MCP" ]; then
-        # Merge into existing config — add fishing-frenzy key if not present
         if python3 -c "
 import json, sys
 with open('$CURSOR_MCP') as f:
@@ -158,6 +157,10 @@ if command -v openclaw &> /dev/null; then
         CONFIGURED+=("OpenClaw") || \
         CONFIGURED+=("OpenClaw (already registered)")
 fi
+
+# ─── Step 4: Preferences questionnaire ────────────────────────────────────
+echo ""
+python3 "$SCRIPT_DIR/setup_preferences.py"
 
 # ─── Summary ──────────────────────────────────────────────────────────────
 echo ""

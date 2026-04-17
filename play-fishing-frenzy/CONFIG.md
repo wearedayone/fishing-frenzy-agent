@@ -84,3 +84,11 @@ SPIN_COOKING_WHEEL: true
 
 - `COOK_BEFORE_SELL`: Check recipes and cook matching fish before selling
 - `SPIN_COOKING_WHEEL`: Spend pearls on cooking wheel after cooking
+
+## Notifications
+
+```
+RON_REMINDER: true
+```
+
+- `RON_REMINDER`: Show the RON deposit reminder at session start when wallet has 0 RON balance. Set to `false` to dismiss permanently.
