@@ -316,15 +316,25 @@ def buy_item(item_name: str, quantity: int = 1, auto_use: bool = True) -> str:
             return json.dumps(_game_error("buy_item", buy_result.get("message", "Purchase failed"), buy_result))
 
         if auto_use:
-            use_result = api.use_item(item_id, quantity)
+            use_result = None
+            try:
+                use_result = api.use_item(item_id, quantity)
+            except Exception:
+                pass  # use endpoint may not exist; buy may auto-apply
             after = _get_profile_snapshot()
             verified = _build_verification(before, after)
+            # Check if effect was applied (e.g. energy increased) even if use_item failed
+            auto_applied = False
+            if before and after and before.get("energy") is not None:
+                auto_applied = after.get("energy", 0) > before.get("energy", 0)
             result_out = {
                 "bought": quantity,
                 "item": item_name,
-                "used": True,
-                "result": use_result,
+                "used": bool(use_result) or auto_applied,
+                "result": use_result or buy_result,
             }
+            if auto_applied and not use_result:
+                result_out["note"] = "Buy auto-applied the consumable effect"
             if verified:
                 result_out["verified"] = verified
             state.log_action("buy_item", params={"item": item_name, "quantity": quantity, "auto_use": True},
@@ -397,17 +407,19 @@ def get_recipes() -> str:
 
 
 @server.tool()
-def cook(recipe_id: str, quantity: int, fish_ids: list[str],
-         shiny_fish_ids: list[str] = None) -> str:
+def cook(recipe_id: str, quantity: int, fish_ids: str,
+         shiny_fish_ids: str = "") -> str:
     """Cook fish into sashimi using a recipe.
 
     Args:
         recipe_id: The recipe ID (from get_recipes).
         quantity: Number of times to cook.
-        fish_ids: List of fish IDs to use as ingredients.
-        shiny_fish_ids: Optional list of shiny fish IDs for bonus."""
+        fish_ids: Comma-separated fish IDs to use as ingredients.
+        shiny_fish_ids: Comma-separated shiny fish IDs for bonus (optional)."""
     try:
-        result = api.cook(recipe_id, quantity, fish_ids, shiny_fish_ids)
+        id_list = [x.strip() for x in fish_ids.split(",") if x.strip()]
+        shiny_list = [x.strip() for x in shiny_fish_ids.split(",") if x.strip()] if shiny_fish_ids else None
+        result = api.cook(recipe_id, quantity, id_list, shiny_list)
         return json.dumps(result, indent=2)
     except Exception as e:
         return json.dumps(_tool_error(e))
@@ -760,25 +772,24 @@ def _extract_chest_ids(inv) -> list[str]:
 
 
 @server.tool()
-def open_chests(chest_ids: list[str] = None) -> str:
+def open_chests(chest_ids: str = "") -> str:
     """Open chests from inventory. Opens all non-NFT chests if no IDs specified.
 
     Args:
-        chest_ids: Optional list of specific chest IDs to open.
-                   If empty/None, fetches inventory and opens all available chests."""
+        chest_ids: Comma-separated chest IDs to open. If empty, opens all available chests."""
     try:
-        if not chest_ids:
-            # Fetch all chests and open them
+        id_list = [x.strip() for x in chest_ids.split(",") if x.strip()] if chest_ids else []
+        if not id_list:
             inv = api.get_inventory_chests()
-            chest_ids = _extract_chest_ids(inv)
+            id_list = _extract_chest_ids(inv)
 
-        if not chest_ids:
+        if not id_list:
             return json.dumps({"message": "No chests to open"})
 
-        if len(chest_ids) == 1:
-            result = api.open_chest(chest_ids[0])
+        if len(id_list) == 1:
+            result = api.open_chest(id_list[0])
         else:
-            result = api.open_chests_batch(chest_ids)
+            result = api.open_chests_batch(id_list)
         return json.dumps(result, indent=2)
     except Exception as e:
         return json.dumps(_tool_error(e))
@@ -905,17 +916,18 @@ def onchain_checkin() -> str:
 
 
 @server.tool()
-def mint_leaderboard_chests(chest_token_ids: list[int]) -> str:
+def mint_leaderboard_chests(chest_token_ids: str) -> str:
     """Mint leaderboard chests on-chain so they can be opened.
 
     Leaderboard chests exist as NFTs that must be minted before opening.
     After minting, use open_chests() to open them.
 
     Args:
-        chest_token_ids: List of chest token IDs to mint (from get_chests)."""
+        chest_token_ids: Comma-separated chest token IDs to mint (from get_chests)."""
     try:
         from ff_agent import chain
-        result = chain.mint_chests(chest_token_ids)
+        id_list = [int(x.strip()) for x in chest_token_ids.split(",") if x.strip()]
+        result = chain.mint_chests(id_list)
         state.log_action("mint_leaderboard_chests",
                          params={"chest_token_ids": chest_token_ids},
                          result=result)
