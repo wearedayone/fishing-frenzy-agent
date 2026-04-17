@@ -39,11 +39,11 @@ The user can edit `CONFIG.md` to change thresholds, strategy, and preferences. W
 
 ## Setup Check
 
-Before playing, verify the MCP server is connected by calling `get_profile()`. If the tool is not available, tell the user:
+Before playing, verify the MCP server is connected by calling `get_profile()`. If the tool is not available:
 
-```
-bash ${CLAUDE_SKILL_DIR}/scripts/setup.sh
-```
+1. Run: `bash ${CLAUDE_SKILL_DIR}/scripts/setup.sh`
+2. Tell the user to restart their AI tool
+3. After restart, retry `get_profile()`
 
 ## Quick Start (First Run)
 

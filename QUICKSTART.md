@@ -2,25 +2,28 @@
 
 ## What This Is
 
-An AI agent that plays [Fishing Frenzy](https://fishingfrenzy.co) autonomously inside Claude Code. You type `/play-fishing-frenzy`, and it creates a wallet, catches fish, sells them, buys sushi, completes quests, and levels up — all on its own.
+An AI agent that plays [Fishing Frenzy](https://fishingfrenzy.co) autonomously. You type `/play-fishing-frenzy`, and it creates a wallet, catches fish, sells them, buys sushi, completes quests, and levels up — all on its own.
+
+Works with Claude Code, Cursor, Cline, Windsurf, OpenClaw, and any MCP-compatible AI tool.
 
 ---
 
 ## Prerequisites
 
 - **Python 3.10+** — check with `python3 --version`
-- **Claude Code** — [install here](https://docs.anthropic.com/en/docs/claude-code/overview) if you don't have it
+- **An AI tool** with MCP support (Claude Code, Cursor, Cline, Windsurf, etc.)
 
 ---
 
-## Install (1 minute)
+## Install
 
 ```bash
-npx skills add wearedayone/fishing-frenzy-agent --all --global -y
-bash ~/.claude/skills/play-fishing-frenzy/scripts/setup.sh
+npx skills add wearedayone/fishing-frenzy-agent --all --global -y && bash ~/.agents/skills/play-fishing-frenzy/scripts/setup.sh
 ```
 
-Restart Claude Code. That's it.
+This installs the skill, Python dependencies, and registers the MCP server for every detected AI tool.
+
+Restart your AI tool. That's it.
 
 <details>
 <summary>Alternative: clone manually</summary>
@@ -36,7 +39,7 @@ bash scripts/setup.sh
 
 ## Play
 
-Open Claude Code in any directory and type:
+Open your AI tool and type:
 
 ```
 /play-fishing-frenzy
@@ -127,8 +130,8 @@ Edit **`SKILL.md`** to change the agent's decision-making logic itself.
 **"Tool not found" or MCP errors:**
 ```bash
 # Re-run setup to re-register the MCP server
-bash ~/.claude/skills/play-fishing-frenzy/scripts/setup.sh
-# Then restart Claude Code
+bash ~/.agents/skills/play-fishing-frenzy/scripts/setup.sh
+# Then restart your AI tool
 ```
 
 **"No module named 'mcp'" or import errors:**

@@ -7,20 +7,23 @@
 
 > An autonomous AI agent that plays [Fishing Frenzy](https://fishingfrenzy.co) — fishing, cooking, diving, quests, and economy optimization on the Ronin blockchain.
 
-Works with any AI tool that supports [MCP](https://modelcontextprotocol.io) — Claude Code, Cursor, Cline, Windsurf, OpenClaw, and more. Install, run `/play-fishing-frenzy`, and your agent handles fishing, selling, cooking, quests, diving, and equipment management.
+Works with any AI tool that supports [MCP](https://modelcontextprotocol.io) — Claude Code, Cursor, Cline, Windsurf, OpenClaw, and more.
 
 **The meta-game**: Customize the strategy in `SKILL.md` to optimize your agent's decision-making. Same tools, different strategies.
 
 ## Install
 
-### Step 1: Get the code + dependencies
-
 ```bash
-npx skills add wearedayone/fishing-frenzy-agent --all --global -y
-pip3 install -r ~/.agents/skills/play-fishing-frenzy/requirements.txt
+npx skills add wearedayone/fishing-frenzy-agent --all --global -y && bash ~/.agents/skills/play-fishing-frenzy/scripts/setup.sh
 ```
 
-This installs the skill to every detected AI agent (Claude Code, Cursor, Cline, etc.) and installs Python dependencies.
+This installs the skill + Python dependencies, and registers the MCP server for every detected AI tool (Claude Code, Cursor, Cline, Windsurf, OpenClaw).
+
+Restart your AI tool, then type:
+
+```
+/play-fishing-frenzy
+```
 
 <details>
 <summary>Alternative: clone manually</summary>
@@ -28,49 +31,48 @@ This installs the skill to every detected AI agent (Claude Code, Cursor, Cline, 
 ```bash
 git clone https://github.com/wearedayone/fishing-frenzy-agent
 cd fishing-frenzy-agent
-pip3 install -r requirements.txt
+bash scripts/setup.sh
 ```
 </details>
 
-### Step 2: Register the MCP server for your tool
+<details>
+<summary>Manual MCP setup (if your tool wasn't auto-detected)</summary>
 
-The agent uses an MCP server that exposes 36 game tools. Register it with your AI tool:
+The MCP server command is: `python3 <path>/ff_agent/server.py` (stdio transport).
+
+Replace `<path>` with `~/.agents/skills/play-fishing-frenzy` (npx install) or your clone directory.
 
 #### Claude Code
 
 ```bash
-claude mcp add fishing-frenzy -- python3 ~/.agents/skills/play-fishing-frenzy/ff_agent/server.py
-```
-
-Or run the setup script (does the above + lets you pick a strategy):
-
-```bash
-bash ~/.claude/skills/play-fishing-frenzy/scripts/setup.sh
+claude mcp add fishing-frenzy -- python3 <path>/ff_agent/server.py
 ```
 
 #### Cursor
 
-Go to **Cursor Settings > MCP** and add:
-
-```json
-{
-  "fishing-frenzy": {
-    "command": "python3",
-    "args": ["~/.agents/skills/play-fishing-frenzy/ff_agent/server.py"]
-  }
-}
-```
-
-#### Cline
-
-Add to your MCP settings (`.cline/mcp_settings.json`):
+Add to `~/.cursor/mcp.json`:
 
 ```json
 {
   "mcpServers": {
     "fishing-frenzy": {
       "command": "python3",
-      "args": ["~/.agents/skills/play-fishing-frenzy/ff_agent/server.py"]
+      "args": ["<path>/ff_agent/server.py"]
+    }
+  }
+}
+```
+
+#### Cline
+
+Add to `~/.cline/mcp_settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "fishing-frenzy": {
+      "command": "python3",
+      "args": ["<path>/ff_agent/server.py"]
     }
   }
 }
@@ -78,13 +80,15 @@ Add to your MCP settings (`.cline/mcp_settings.json`):
 
 #### Windsurf
 
-Add to your MCP config in Windsurf settings:
+Add to `~/.windsurf/mcp.json`:
 
 ```json
 {
-  "fishing-frenzy": {
-    "command": "python3",
-    "args": ["~/.agents/skills/play-fishing-frenzy/ff_agent/server.py"]
+  "mcpServers": {
+    "fishing-frenzy": {
+      "command": "python3",
+      "args": ["<path>/ff_agent/server.py"]
+    }
   }
 }
 ```
@@ -92,16 +96,10 @@ Add to your MCP config in Windsurf settings:
 #### OpenClaw
 
 ```bash
-openclaw mcp set fishing-frenzy '{"command":"python3","args":["~/.agents/skills/play-fishing-frenzy/ff_agent/server.py"]}'
+openclaw mcp set fishing-frenzy '{"command":"python3","args":["<path>/ff_agent/server.py"]}'
 ```
 
-#### Any other MCP-compatible tool
-
-Point it at the server: `python3 ~/.agents/skills/play-fishing-frenzy/ff_agent/server.py` (stdio transport).
-
----
-
-Restart your tool after registering. If you cloned instead of using `npx skills`, replace `~/.agents/skills/play-fishing-frenzy/` with your clone path.
+</details>
 
 ## Play
 
@@ -203,7 +201,7 @@ fishing-frenzy-agent/
 
 **SKILL.md** teaches your AI agent how to play — the game loop, decision framework, and strategy templates. Edit this file to change how your agent plays.
 
-**MCP Server** (`ff_agent/server.py`) exposes game actions as tools that Claude calls autonomously.
+**MCP Server** (`ff_agent/server.py`) exposes game actions as tools that your AI agent calls autonomously.
 
 ## Customizing Your Strategy
 
