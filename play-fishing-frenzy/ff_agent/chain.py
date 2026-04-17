@@ -139,8 +139,16 @@ CHEST_FACTORY_ABI = [
 
 
 def _get_w3() -> Web3:
-    """Get a Web3 instance connected to Ronin RPC."""
+    """Get a Web3 instance connected to Ronin RPC with PoA middleware."""
     w3 = Web3(Web3.HTTPProvider(RONIN_RPC))
+    # Ronin is a PoA chain — extraData > 32 bytes without this middleware
+    try:
+        from web3.middleware import ExtraDataToPOAMiddleware
+        w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
+    except ImportError:
+        # Older web3.py versions
+        from web3.middleware import geth_poa_middleware
+        w3.middleware_onion.inject(geth_poa_middleware, layer=0)
     if not w3.is_connected():
         raise ConnectionError("Failed to connect to Ronin RPC")
     return w3
