@@ -47,9 +47,11 @@ echo "  Detecting AI tools..."
 # --- Claude Code ---
 if command -v claude &> /dev/null; then
     echo "  Found: Claude Code"
-    claude mcp add fishing-frenzy -- "$PYTHON_CMD" "$SERVER_PATH" 2>/dev/null && \
-        CONFIGURED+=("Claude Code") || \
+    if claude mcp add fishing-frenzy --scope user -- "$PYTHON_CMD" "$SERVER_PATH" 2>&1; then
+        CONFIGURED+=("Claude Code")
+    else
         CONFIGURED+=("Claude Code (already registered)")
+    fi
 fi
 
 # --- Cursor ---
