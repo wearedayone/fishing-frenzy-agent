@@ -106,5 +106,10 @@ Get diving game configuration: board sizes, coral rewards, ticket costs, whirlpo
 ### `get_diving_state()`
 Check if a dive is currently in progress.
 
+### `cash_out_dive()`
+Cash out a stuck or in-progress dive via WebSocket. Sends the endgame command
+to finish the dive and collect any accumulated rewards. The `dive()` tool also
+auto-cashes out stuck dives before starting a new one.
+
 ### `get_diving_jackpots()`
 Get current jackpot values for all dive types.

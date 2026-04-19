@@ -207,6 +207,8 @@ Track throughout: fish caught, gold earned, XP earned, energy spent, sushi bough
 16. ADMIRE      — admire a random top-100 aquarium for 20 gold (once per day)
 17. SUSHI       — buy + use if gold threshold met, then fish more (repeat 12-14)
 18. DIVE        — if level >= 30 and gold >= 2500
+                  If a dive is stuck (PLAYING state), `dive()` auto-cashes it out first.
+                  You can also call `cash_out_dive()` directly to resolve stuck dives.
 19. LEADERBOARD — get_leaderboard() to check standing (informational)
 20. END         — end_play_session(session_id, stats) + display session summary
 ```

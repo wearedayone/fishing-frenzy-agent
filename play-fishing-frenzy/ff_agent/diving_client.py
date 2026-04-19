@@ -149,6 +149,80 @@ async def _dive_session_async(token: str, max_picks: int = 0) -> dict:
         return {"success": False, "error": str(e)}
 
 
+def cash_out_dive(token: str) -> dict:
+    """Cash out a stuck/in-progress dive via WebSocket.
+
+    Connects to the diving WebSocket and sends the endgame command
+    to finish the dive and collect any rewards.
+
+    Args:
+        token: JWT access token.
+
+    Returns:
+        Dict with success status and any endgame rewards.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            return pool.submit(
+                asyncio.run, _cash_out_dive_async(token)
+            ).result()
+    else:
+        return asyncio.run(_cash_out_dive_async(token))
+
+
+async def _cash_out_dive_async(token: str) -> dict:
+    """Async implementation of cashing out a stuck dive."""
+    url = f"{WS_URL}?token={token}&gameType=diving"
+    headers = {
+        "Origin": "https://fishingfrenzy.co",
+        "User-Agent": "Mozilla/5.0 (compatible; FishingFrenzyAgent/1.0)",
+    }
+
+    try:
+        async with websockets.connect(
+            url, additional_headers=headers, open_timeout=15, close_timeout=5
+        ) as ws:
+            # Send endgame to cash out immediately
+            await ws.send(json.dumps({"cmd": "endgame"}))
+
+            resp = json.loads(await asyncio.wait_for(ws.recv(), timeout=10))
+
+            if resp.get("status") == WS_BAD_REQUEST:
+                return {
+                    "success": False,
+                    "error": resp.get("message", "Bad request — no dive in progress?"),
+                }
+
+            if resp.get("type") == "endgame_response":
+                return {
+                    "success": True,
+                    "cashed_out": True,
+                    "endgame_rewards": resp.get("data"),
+                    "full_board": resp.get("board"),
+                }
+
+            return {
+                "success": True,
+                "cashed_out": True,
+                "response": resp,
+            }
+
+    except websockets.ConnectionClosed as e:
+        if e.code == 4000:
+            return {"success": False, "error": "Disconnected by server"}
+        return {"success": False, "error": f"Connection closed: {e.code} {e.reason}"}
+    except asyncio.TimeoutError:
+        return {"success": False, "error": "WebSocket timeout"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 def _get_board_size(board_data: dict) -> tuple[int, int]:
     """Extract board dimensions from init_diving data.
 

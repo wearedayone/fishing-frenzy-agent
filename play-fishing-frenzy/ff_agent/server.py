@@ -718,13 +718,17 @@ def dive(max_picks: int = 0, multiplier: str = "X1") -> str:
 
     Returns dive results: cells revealed, rewards collected, board data."""
     try:
-        # Check if a dive is already in progress
+        # Check if a dive is already in progress — auto cash out
         dive_state = api.get_diving_state()
         if isinstance(dive_state, dict) and dive_state.get("state") == "PLAYING":
-            return json.dumps({
-                "error": "A dive is already in progress. Please cash out or finish it in the web/mobile game before starting a new one.",
-                "current_state": dive_state
-            })
+            token = ff_auth.get_token()
+            cashout = diving_client.cash_out_dive(token)
+            if not cashout.get("success"):
+                return json.dumps({
+                    "error": f"A dive was in progress but cash-out failed: {cashout.get('error')}. Try again or finish it in the game UI.",
+                    "cashout_result": cashout,
+                    "current_state": dive_state,
+                })
 
         # Step 1: Use the ticket
         use_result = api.use_diving_ticket("Regular", multiplier)
@@ -739,6 +743,21 @@ def dive(max_picks: int = 0, multiplier: str = "X1") -> str:
         # Step 3: Play via WebSocket
         token = ff_auth.get_token()
         result = diving_client.dive_session(token, max_picks)
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        return json.dumps(_tool_error(e))
+
+
+@server.tool()
+def cash_out_dive() -> str:
+    """Cash out a stuck or in-progress dive.
+
+    Connects via WebSocket and sends the endgame command to finish the dive
+    and collect any accumulated rewards. Use this when a dive is stuck in
+    PLAYING state."""
+    try:
+        token = ff_auth.get_token()
+        result = diving_client.cash_out_dive(token)
         return json.dumps(result, indent=2)
     except Exception as e:
         return json.dumps(_tool_error(e))
