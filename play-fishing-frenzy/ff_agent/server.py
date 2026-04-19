@@ -540,6 +540,7 @@ def spin_karma_wheel() -> str:
     Costs a small RON fee (~0.12 RON) for VRF randomness.
     Can only be spun once per day (resets at 2 AM UTC)."""
     try:
+        from ff_agent import chain
         result = chain.spin_token_wheel()
         return json.dumps(result, indent=2)
     except Exception as e:
@@ -717,6 +718,14 @@ def dive(max_picks: int = 0, multiplier: str = "X1") -> str:
 
     Returns dive results: cells revealed, rewards collected, board data."""
     try:
+        # Check if a dive is already in progress
+        dive_state = api.get_diving_state()
+        if isinstance(dive_state, dict) and dive_state.get("state") == "PLAYING":
+            return json.dumps({
+                "error": "A dive is already in progress. Please cash out or finish it in the web/mobile game before starting a new one.",
+                "current_state": dive_state
+            })
+
         # Step 1: Use the ticket
         use_result = api.use_diving_ticket("Regular", multiplier)
         if isinstance(use_result, dict) and use_result.get("code") == 400:
