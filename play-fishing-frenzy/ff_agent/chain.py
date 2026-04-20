@@ -158,13 +158,23 @@ KATANA_ROUTER_ABI = [
 CHEST_FACTORY_ABI = [
     {
         "inputs": [
-            {"name": "to", "type": "address"},
-            {"name": "tokenIds", "type": "uint256[]"},
-            {"name": "amounts", "type": "uint256[]"},
+            {"name": "chestTokenIds", "type": "bytes32[]"},
+            {"name": "tierIds", "type": "uint16[]"},
+            {"name": "quantities", "type": "uint256[]"},
+            {"name": "nonce", "type": "uint256"},
             {"name": "deadline", "type": "uint256"},
             {"name": "signature", "type": "bytes"},
         ],
         "name": "mintBatchChestWithSignature",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function",
+    },
+    {
+        "inputs": [
+            {"name": "tokenIds", "type": "uint256[]"},
+        ],
+        "name": "openBatchChest",
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function",
@@ -393,22 +403,22 @@ def spin_token_wheel() -> dict:
 # Chest Minting
 # ============================================================
 
-def mint_chests(chest_token_ids: list[int]) -> dict:
-    """Mint leaderboard chests on-chain.
+def mint_chests(user_chest_token_ids: list[str]) -> dict:
+    """Mint in-game chests as NFTs on-chain (withdraw to wallet).
 
     1. Request mint signatures from the game server
     2. Call mintBatchChestWithSignature on the chest factory contract
 
     Args:
-        chest_token_ids: List of chest token IDs to mint.
+        user_chest_token_ids: List of userItemIds from the inventory.
 
     Returns:
-        Dict with tx_hash and minted chest count.
+        Dict with tx_hash, minted chest count, and the on-chain chestTokenIds.
     """
     # Step 1: Get server signature for minting
     sig_response = api._request(
         "POST", "/trading/chest-mint-signatures",
-        json={"chestTokenIds": chest_token_ids},
+        json={"userChestTokenIds": user_chest_token_ids},
     )
 
     if isinstance(sig_response, dict) and sig_response.get("code") in (400, 404):
@@ -416,11 +426,14 @@ def mint_chests(chest_token_ids: list[int]) -> dict:
 
     # Extract signature data from response
     data = sig_response.get("data", sig_response)
-    signature = data.get("signature")
+    chest_token_ids = data.get("chestTokenIds", [])
+    tier_ids = data.get("tierIds", [])
+    quantities = data.get("quantities", [1] * len(user_chest_token_ids))
+    nonce = data.get("nonce")
     deadline = data.get("deadline")
-    amounts = data.get("amounts", [1] * len(chest_token_ids))
+    signature = data.get("signature")
 
-    if not signature or not deadline:
+    if not signature or deadline is None or nonce is None:
         raise RuntimeError(f"Invalid mint signature response: {sig_response}")
 
     # Step 2: Call the on-chain mint function
@@ -432,9 +445,10 @@ def mint_chests(chest_token_ids: list[int]) -> dict:
     )
 
     tx = contract.functions.mintBatchChestWithSignature(
-        wallet["address"],
         chest_token_ids,
-        amounts,
+        tier_ids,
+        quantities,
+        nonce,
         deadline,
         bytes.fromhex(signature.replace("0x", "")),
     ).build_transaction({})
@@ -444,7 +458,59 @@ def mint_chests(chest_token_ids: list[int]) -> dict:
     return {
         "success": True,
         "tx_hash": tx_hash,
-        "chests_minted": len(chest_token_ids),
+        "chests_minted": len(user_chest_token_ids),
+        "chest_token_ids": chest_token_ids,
+    }
+
+
+def open_chests_onchain(chest_token_ids: list[int]) -> dict:
+    """Open chests on-chain via the chest factory contract.
+
+    1. Call openBatchChest(tokenIds) on the chest factory
+    2. Notify the game server with the tx hash
+
+    Args:
+        chest_token_ids: List of chest NFT token IDs to open.
+
+    Returns:
+        Dict with tx_hash and API rewards response.
+    """
+    w3 = _get_w3()
+    wallet, _ = _get_wallet_and_account()
+    contract = w3.eth.contract(
+        address=Web3.to_checksum_address(CONTRACTS["chest_factory"]),
+        abi=CHEST_FACTORY_ABI,
+    )
+
+    tx = contract.functions.openBatchChest(
+        chest_token_ids,
+    ).build_transaction({})
+
+    tx_hash = _send_tx(w3, tx)
+    tx_hash_hex = f"0x{tx_hash}" if not tx_hash.startswith("0x") else tx_hash
+
+    # Notify game server about the opened chests
+    import httpx
+    from . import auth
+    headers = {
+        "Authorization": f"Bearer {auth.get_token()}",
+        "Content-Type": "application/json",
+        "Origin": "https://fishingfrenzy.co",
+        "Referer": "https://fishingfrenzy.co/",
+    }
+    with httpx.Client(timeout=15) as client:
+        resp = client.post(
+            f"{api.BASE_URL}/trading/open-nft-chest",
+            headers=headers,
+            json={"transactionHash": tx_hash_hex},
+        )
+        api_result = resp.json()
+
+    return {
+        "success": resp.status_code == 200,
+        "tx_hash": tx_hash_hex,
+        "chests_opened": len(chest_token_ids),
+        "api_result": api_result,
     }
 
 

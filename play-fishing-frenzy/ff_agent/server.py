@@ -787,68 +787,114 @@ def get_chests() -> str:
         return json.dumps(_tool_error(e))
 
 
-def _extract_chest_ids(inv) -> list[str]:
-    """Extract openable chest userItemIds from inventory response.
+def _extract_chest_data(inv: dict) -> dict:
+    """Extract chest data from inventory response.
 
-    The API returns: {"inGame": [{"userItemIds": [...], "canOpen": true, ...}], "inWallet": [...]}
-    Each chest group has userItemIds — the individual instance IDs needed to open.
-    Only include chests where canOpen is true (skip NFT chests that need minting).
+    Returns dict with:
+      - in_game: list of userItemIds for chests that need minting first
+      - in_wallet: list of NFT tokenIds for chests ready to open on-chain
     """
-    ids = []
-    if isinstance(inv, dict):
-        # Primary format: {"inGame": [...], "inWallet": [...]}
-        chests = inv.get("inGame", []) + inv.get("inWallet", [])
-        for chest in chests:
-            if not isinstance(chest, dict):
-                continue
-            if not chest.get("canOpen", False):
-                continue
-            user_item_ids = chest.get("userItemIds", [])
-            ids.extend(str(uid) for uid in user_item_ids)
-    return ids
+    in_game_ids = []
+    wallet_token_ids = []
+
+    if not isinstance(inv, dict):
+        return {"in_game": [], "in_wallet": []}
+
+    # In-game chests: need minting (withdraw) before opening
+    for chest in inv.get("inGame", []):
+        if not isinstance(chest, dict):
+            continue
+        user_item_ids = chest.get("userItemIds", [])
+        in_game_ids.extend(str(uid) for uid in user_item_ids)
+
+    # In-wallet chests: already minted as NFTs, can open directly
+    for chest in inv.get("inWallet", []):
+        if not isinstance(chest, dict):
+            continue
+        if not chest.get("canOpen", False):
+            continue
+        # NFT chests use chestTokenId or tokenId for the on-chain ID
+        token_ids = chest.get("chestTokenIds", [])
+        if token_ids:
+            wallet_token_ids.extend(int(tid) for tid in token_ids)
+        else:
+            # Try individual token ID fields
+            tid = chest.get("chestTokenId") or chest.get("tokenId")
+            if tid is not None:
+                wallet_token_ids.append(int(tid))
+
+    return {"in_game": in_game_ids, "in_wallet": wallet_token_ids}
 
 
 @server.tool()
 def open_chests(chest_ids: str = "") -> str:
-    """Open chests from inventory. Opens all non-NFT chests if no IDs specified.
+    """Open chests from inventory. Opens all available chests if no IDs specified.
+
+    Chests require on-chain transactions to open (costs a small amount of RON for gas).
+    In-game chests are minted as NFTs first, then opened on-chain.
 
     Args:
-        chest_ids: Comma-separated chest IDs to open (use userItemIds from get_chests).
+        chest_ids: Comma-separated chest NFT token IDs to open on-chain.
                    If empty, opens all available chests automatically."""
     try:
-        id_list = [x.strip() for x in chest_ids.split(",") if x.strip()] if chest_ids else []
-        if not id_list:
-            inv = api.get_inventory_chests()
-            id_list = _extract_chest_ids(inv)
+        from ff_agent import chain
 
-        if not id_list:
-            return json.dumps({"message": "No chests to open"})
-
-        # Open chests one at a time (batch endpoint uses a different format)
+        inv = api.get_inventory_chests()
+        chest_data = _extract_chest_data(inv)
         results = []
-        for cid in id_list:
+
+        # Step 1: Mint in-game chests (withdraw to wallet) if any
+        if chest_data["in_game"]:
             try:
-                result = api.open_chest(cid)
-                items = result.get("totalItems", [])
-                results.append({"chest_id": cid, "items": items})
+                mint_result = chain.mint_chests(chest_data["in_game"])
+                results.append({
+                    "action": "mint",
+                    "success": True,
+                    "chests_minted": mint_result.get("chests_minted", 0),
+                    "tx_hash": mint_result.get("tx_hash"),
+                })
+                # After minting, the chests now have on-chain token IDs
+                minted_token_ids = mint_result.get("chest_token_ids", [])
+                if minted_token_ids:
+                    chest_data["in_wallet"].extend(int(tid) for tid in minted_token_ids)
             except Exception as e:
-                results.append({"chest_id": cid, "error": str(e)})
+                results.append({
+                    "action": "mint",
+                    "success": False,
+                    "error": str(e),
+                    "hint": "In-game chests need minting first. Requires RON for gas.",
+                })
 
-        # Summarize
-        total_items: dict[str, int] = {}
-        opened = sum(1 for r in results if "items" in r)
-        for r in results:
-            for item in r.get("items", []):
-                name = item.get("name", "Unknown")
-                qty = item.get("quantity", 1)
-                total_items[name] = total_items.get(name, 0) + qty
+        # If specific IDs were provided, use those instead
+        if chest_ids:
+            token_ids = [int(x.strip()) for x in chest_ids.split(",") if x.strip()]
+        else:
+            token_ids = chest_data["in_wallet"]
 
-        return json.dumps({
-            "opened": opened,
-            "failed": len(results) - opened,
-            "total_items": total_items,
-            "details": results
-        }, indent=2)
+        if not token_ids:
+            if not results:
+                return json.dumps({"message": "No chests to open"})
+            return json.dumps({"results": results}, indent=2)
+
+        # Step 2: Open chests on-chain
+        try:
+            open_result = chain.open_chests_onchain(token_ids)
+            results.append({
+                "action": "open",
+                "success": open_result.get("success", False),
+                "chests_opened": open_result.get("chests_opened", len(token_ids)),
+                "tx_hash": open_result.get("tx_hash"),
+                "rewards": open_result.get("api_result"),
+            })
+        except Exception as e:
+            results.append({
+                "action": "open",
+                "success": False,
+                "error": str(e),
+                "hint": "Opening chests requires RON for gas. Check wallet balance.",
+            })
+
+        return json.dumps({"results": results}, indent=2)
     except Exception as e:
         return json.dumps(_tool_error(e))
 
@@ -981,10 +1027,10 @@ def mint_leaderboard_chests(chest_token_ids: str) -> str:
     After minting, use open_chests() to open them.
 
     Args:
-        chest_token_ids: Comma-separated chest token IDs to mint (from get_chests)."""
+        chest_token_ids: Comma-separated userItemIds from get_chests inventory."""
     try:
         from ff_agent import chain
-        id_list = [int(x.strip()) for x in chest_token_ids.split(",") if x.strip()]
+        id_list = [x.strip() for x in chest_token_ids.split(",") if x.strip()]
         result = chain.mint_chests(id_list)
         state.log_action("mint_leaderboard_chests",
                          params={"chest_token_ids": chest_token_ids},
