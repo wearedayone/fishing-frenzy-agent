@@ -177,7 +177,13 @@ def cash_out_dive(token: str) -> dict:
 
 
 async def _cash_out_dive_async(token: str) -> dict:
-    """Async implementation of cashing out a stuck dive."""
+    """Async implementation of cashing out a stuck dive.
+
+    A fresh WebSocket connection has no session context, so sending endgame
+    directly fails with "Diving session not initialized". We must send
+    new_dive first to re-attach to the in-progress dive, then immediately
+    cash out with endgame.
+    """
     url = f"{WS_URL}?token={token}&gameType=diving"
     headers = {
         "Origin": "https://fishingfrenzy.co",
@@ -188,15 +194,25 @@ async def _cash_out_dive_async(token: str) -> dict:
         async with websockets.connect(
             url, additional_headers=headers, open_timeout=15, close_timeout=5
         ) as ws:
-            # Send endgame to cash out immediately
-            await ws.send(json.dumps({"cmd": "endgame"}))
+            # Step 1: Send new_dive to reconnect to the in-progress session
+            await ws.send(json.dumps({"cmd": "new_dive"}))
+            init_msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=10))
 
+            if init_msg.get("status") == WS_BAD_REQUEST:
+                return {
+                    "success": False,
+                    "error": init_msg.get("message", "Failed to reconnect to dive"),
+                }
+
+            # Step 2: Immediately cash out
+            await asyncio.sleep(0.5)
+            await ws.send(json.dumps({"cmd": "endgame"}))
             resp = json.loads(await asyncio.wait_for(ws.recv(), timeout=10))
 
             if resp.get("status") == WS_BAD_REQUEST:
                 return {
                     "success": False,
-                    "error": resp.get("message", "Bad request — no dive in progress?"),
+                    "error": resp.get("message", "Endgame rejected by server"),
                 }
 
             if resp.get("type") == "endgame_response":
