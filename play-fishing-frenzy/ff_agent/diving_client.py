@@ -179,10 +179,10 @@ def cash_out_dive(token: str) -> dict:
 async def _cash_out_dive_async(token: str) -> dict:
     """Async implementation of cashing out a stuck dive.
 
-    A fresh WebSocket connection has no session context, so sending endgame
-    directly fails with "Diving session not initialized". We must send
-    new_dive first to re-attach to the in-progress dive, then immediately
-    cash out with endgame.
+    A fresh WebSocket has no session context. The flow:
+    1. Send new_dive to re-attach to the in-progress dive
+    2. Pick a few random cells (server requires >= 1 pick before cash-out)
+    3. Cash out with endgame (or the game ends naturally from whirlpools)
     """
     url = f"{WS_URL}?token={token}&gameType=diving"
     headers = {
@@ -194,7 +194,7 @@ async def _cash_out_dive_async(token: str) -> dict:
         async with websockets.connect(
             url, additional_headers=headers, open_timeout=15, close_timeout=5
         ) as ws:
-            # Step 1: Send new_dive to reconnect to the in-progress session
+            # Step 1: Reconnect to the in-progress dive
             await ws.send(json.dumps({"cmd": "new_dive"}))
             init_msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=10))
 
@@ -204,29 +204,60 @@ async def _cash_out_dive_async(token: str) -> dict:
                     "error": init_msg.get("message", "Failed to reconnect to dive"),
                 }
 
-            # Step 2: Immediately cash out
+            board_data = init_msg.get("data", {})
+            cols = board_data.get("totalCol", 6)
+            rows = board_data.get("totalRow", 10)
+
+            # Step 2: Pick a few random cells (required before cash-out)
+            all_cells = [(c, r) for c in range(cols) for r in range(rows)]
+            random.shuffle(all_cells)
+            picks_made = 0
+            rewards = []
+
+            for col, row in all_cells[:3]:
+                await asyncio.sleep(random.uniform(0.3, 0.8))
+                await ws.send(json.dumps({"cmd": "select", "col": col, "row": row}))
+                sel = json.loads(await asyncio.wait_for(ws.recv(), timeout=10))
+                picks_made += 1
+
+                cell_data = sel.get("data", {})
+                if cell_data.get("reward"):
+                    rewards.append(cell_data["reward"])
+
+                # Game ended naturally (e.g. hit 2 whirlpools)
+                result = cell_data.get("result")
+                if isinstance(result, dict) and result.get("result"):
+                    return {
+                        "success": True,
+                        "cashed_out": False,
+                        "game_ended": result.get("result"),
+                        "cells_picked": picks_made,
+                        "rewards": rewards,
+                        "endgame_data": result,
+                    }
+
+            # Step 3: Cash out
             await asyncio.sleep(0.5)
             await ws.send(json.dumps({"cmd": "endgame"}))
             resp = json.loads(await asyncio.wait_for(ws.recv(), timeout=10))
-
-            if resp.get("status") == WS_BAD_REQUEST:
-                return {
-                    "success": False,
-                    "error": resp.get("message", "Endgame rejected by server"),
-                }
 
             if resp.get("type") == "endgame_response":
                 return {
                     "success": True,
                     "cashed_out": True,
+                    "cells_picked": picks_made,
+                    "rewards": rewards,
                     "endgame_rewards": resp.get("data"),
                     "full_board": resp.get("board"),
                 }
 
+            # Even if endgame returns 400, the picks freed the dive
             return {
                 "success": True,
-                "cashed_out": True,
-                "response": resp,
+                "cashed_out": picks_made > 0,
+                "cells_picked": picks_made,
+                "rewards": rewards,
+                "endgame_response": resp,
             }
 
     except websockets.ConnectionClosed as e:

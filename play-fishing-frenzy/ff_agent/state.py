@@ -267,6 +267,31 @@ def get_action_log(session_id: int = None, limit: int = 50) -> list[dict]:
         conn.close()
 
 
+# --- Device ID ---
+
+def get_or_create_device_id() -> str:
+    """Get a persistent device ID, creating one if it doesn't exist.
+
+    This ensures the same agent installation always sends the same deviceId
+    across logins, making it easy to track agent sessions on the backend.
+    """
+    device_id = get_auth("device_id")
+    if device_id:
+        return device_id
+    import uuid
+    device_id = str(uuid.uuid4())
+    conn = get_connection()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO auth (key, value, expires_at) VALUES (?, ?, ?)",
+            ("device_id", device_id, 0)  # expires_at=0 means permanent
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return device_id
+
+
 # --- Cache ---
 
 def set_cache(key: str, value: any, ttl: int = 300):

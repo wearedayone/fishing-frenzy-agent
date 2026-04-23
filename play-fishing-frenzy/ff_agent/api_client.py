@@ -317,6 +317,16 @@ def get_inventory_chests() -> dict:
     return _request("GET", "/inventory/chests")
 
 
+def open_chests_batch(chests: dict) -> dict:
+    """Open non-NFT chests via REST API.
+
+    Args:
+        chests: Dict mapping chest prototype ID to quantity,
+                e.g. {"67d5899abccee2e00b399df0": 2}
+    """
+    return _request("POST", "/chests/open-batch", json={"chests": chests})
+
+
 # --- Fish Collection ---
 
 def get_fish_collection() -> dict:

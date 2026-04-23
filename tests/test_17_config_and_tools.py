@@ -257,12 +257,12 @@ class TestSetupPreferencesConfig:
     def test_updates_strategy(self, tmp_path):
         """update_config changes STRATEGY value."""
         import sys
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "play-fishing-frenzy", "scripts"))
         import setup_preferences
 
         config_src = os.path.join(
             os.path.dirname(os.path.dirname(__file__)),
-            "CONFIG.md"
+            "play-fishing-frenzy", "CONFIG.md"
         )
         config_copy = tmp_path / "CONFIG.md"
         shutil.copy(config_src, config_copy)
@@ -284,12 +284,12 @@ class TestSetupPreferencesConfig:
     def test_updates_numeric_value(self, tmp_path):
         """update_config changes numeric values correctly."""
         import sys
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "play-fishing-frenzy", "scripts"))
         import setup_preferences
 
         config_src = os.path.join(
             os.path.dirname(os.path.dirname(__file__)),
-            "CONFIG.md"
+            "play-fishing-frenzy", "CONFIG.md"
         )
         config_copy = tmp_path / "CONFIG.md"
         shutil.copy(config_src, config_copy)
@@ -310,12 +310,12 @@ class TestSetupPreferencesConfig:
     def test_updates_boolean_value(self, tmp_path):
         """update_config changes boolean values correctly."""
         import sys
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "play-fishing-frenzy", "scripts"))
         import setup_preferences
 
         config_src = os.path.join(
             os.path.dirname(os.path.dirname(__file__)),
-            "CONFIG.md"
+            "play-fishing-frenzy", "CONFIG.md"
         )
         config_copy = tmp_path / "CONFIG.md"
         shutil.copy(config_src, config_copy)
@@ -336,12 +336,12 @@ class TestSetupPreferencesConfig:
     def test_preserves_other_values(self, tmp_path):
         """Changing one key does not affect other keys."""
         import sys
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "play-fishing-frenzy", "scripts"))
         import setup_preferences
 
         config_src = os.path.join(
             os.path.dirname(os.path.dirname(__file__)),
-            "CONFIG.md"
+            "play-fishing-frenzy", "CONFIG.md"
         )
         config_copy = tmp_path / "CONFIG.md"
         shutil.copy(config_src, config_copy)

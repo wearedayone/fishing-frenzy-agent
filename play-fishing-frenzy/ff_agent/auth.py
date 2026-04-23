@@ -1,6 +1,5 @@
 """Privy SIWE authentication and JWT management for Fishing Frenzy Agent."""
 
-import uuid
 import httpx
 
 from . import state
@@ -92,10 +91,11 @@ def _authenticate_with_chain(address: str, chain_id: int) -> dict:
             raise AuthError(f"No token in Privy response: {privy_data}")
 
         # Step 4: Exchange Privy token for game JWT
+        device_id = state.get_or_create_device_id()
         resp = client.post(
             f"{GAME_API}/v1/auth/login",
             json={
-                "deviceId": str(uuid.uuid4()),
+                "deviceId": device_id,
                 "teleUserId": None,
                 "teleName": None,
                 "agentMetadata": {

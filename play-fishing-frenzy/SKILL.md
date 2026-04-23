@@ -164,13 +164,14 @@ After login and after every major action, display:
 ║  ⭐ XP Earned:    890        📈 Level: 25 → 27   ║
 ║  ⚡ Energy Used:  30/30      🍣 Sushi Used: 2    ║
 ║  ✅ Quests Done:  3          🎣 Strategy: GRIND  ║
+║  🐠 xFISH Earned: 25        🎰 Karma Wheel: ✅  ║
 ╠══════════════════════════════════════════════════╣
 ║  🏆 Best Catch: Golden Koi ★★★★★ (80g)          ║
 ║  📊 Efficiency: 78g/energy                       ║
 ╚══════════════════════════════════════════════════╝
 ```
 
-Track throughout: fish caught, gold earned, XP earned, energy spent, sushi bought, best catch, gold/energy ratio.
+Track throughout: fish caught, gold earned, XP earned, energy spent, sushi bought, best catch, gold/energy ratio, xFISH earned (from karma wheel, cooking wheel, diving, quests — show 0 if none).
 
 ## Core Game Loop
 
